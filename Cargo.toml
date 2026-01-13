@@ -5,4 +5,5 @@ edition = "2024"
 
 [dependencies]
 clap = { version = "4.5.54", features = ["derive"] }
+ignore = "0.4.25"
 yarn-lock-parser = "0.12.0"

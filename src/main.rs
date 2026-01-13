@@ -1,6 +1,9 @@
 use clap::Parser;
+use ignore::WalkBuilder;
 use std::fs::read_to_string;
 use std::path::Path;
+use std::path::PathBuf;
+use yarn_lock_parser::parse_str;
 
 #[derive(Debug)]
 enum LockFileType {
@@ -13,6 +16,14 @@ impl LockFileType {
         match self {
             LockFileType::Yarn => "yarn.lock",
             LockFileType::Npm => "package-lock.json",
+        }
+    }
+
+    fn from_filename(name: &str) -> Option<LockFileType> {
+        match name {
+            "yarn.lock" => Some(LockFileType::Yarn),
+            "package-lock.json" => Some(LockFileType::Yarn),
+            _ => None,
         }
     }
 }
@@ -41,24 +52,44 @@ fn parse_lockfile(lock_file: &Path) -> Result<String, String> {
     read_to_string(lock_file).map_err(|err| err.to_string())
 }
 
+fn find_lockfiles(project_path: &str) -> Vec<(LockFileType, PathBuf)> {
+    let mut locks = Vec::new();
+
+    for entry in WalkBuilder::new(project_path)
+        .build()
+        .filter_map(|e| e.ok())
+    {
+        if let Some(name) = entry.file_name().to_str() {
+            let path = entry.path().to_path_buf();
+
+            if let Some(lockfile_type) = LockFileType::from_filename(name) {
+                locks.push((lockfile_type, path));
+            }
+        }
+    }
+
+    locks
+}
+
 fn main() {
     let cli = Cli::parse();
-    dbg!(cli.package);
 
     let lockfile_type = match check_lockfile(&cli.path) {
         Ok(lockfile_type) => lockfile_type,
         Err(err) => panic!("{}", err),
     };
 
-    dbg!(&lockfile_type);
+    let lockfiles = find_lockfiles(&cli.path);
+    dbg!("lockfiles", &lockfiles);
 
-    let lockfile_path = Path::new(&cli.path).join(lockfile_type.file_name());
-    let lockfile_content = match parse_lockfile(&lockfile_path) {
-        Ok(content) => content,
-        Err(err) => panic!("{}", err),
-    };
-
-    dbg!(&lockfile_content);
+    for lock_file in lockfiles {
+        let lockfile_content = match parse_lockfile(&lock_file.1) {
+            Ok(content) => content,
+            Err(err) => panic!("{}", err),
+        };
+        let parsed = parse_str(&lockfile_content);
+        dbg!(&parsed);
+    }
 
     println!("Found lockfile, {:?}", lockfile_type)
 }
