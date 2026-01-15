@@ -3,7 +3,7 @@ mod search;
 
 use clap::Parser;
 use lockfile::{check_lockfile, find_lockfiles, parse_lockfile};
-use search::{find_parents, package_exists};
+use search::{find_dependency_chains, package_exists};
 use yarn_lock_parser::parse_str;
 
 #[derive(Parser)]
@@ -33,7 +33,7 @@ fn main() {
         let parsed = parse_str(&lockfile_content).unwrap();
 
         if package_exists(&parsed.entries, &cli.package) {
-            let parents = find_parents(&parsed.entries, &cli.package);
+            let parents = find_dependency_chains(&parsed.entries, &cli.package);
             println!("Found {} - parents: {:?}", cli.package, parents);
         } else {
             println!("Package {} not found", cli.package);
