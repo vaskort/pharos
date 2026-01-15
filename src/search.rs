@@ -1,6 +1,6 @@
 use yarn_lock_parser::Entry;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ChainLink {
     pub name: String,
     pub version: String,

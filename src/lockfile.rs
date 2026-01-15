@@ -13,7 +13,7 @@ impl LockFileType {
     pub fn from_filename(name: &str) -> Option<LockFileType> {
         match name {
             "yarn.lock" => Some(LockFileType::Yarn),
-            "package-lock.json" => Some(LockFileType::Yarn),
+            "package-lock.json" => Some(LockFileType::Npm),
             _ => None,
         }
     }

@@ -2,8 +2,8 @@ mod lockfile;
 mod search;
 
 use clap::Parser;
-use lockfile::{check_lockfile, find_lockfiles, parse_lockfile};
-use search::{find_dependency_chains, package_exists};
+use lockfile::{find_lockfiles, parse_lockfile};
+use search::{ChainLink, find_dependency_chains, package_exists};
 use yarn_lock_parser::parse_str;
 
 #[derive(Parser)]
@@ -15,26 +15,44 @@ struct Cli {
     path: String,
 }
 
+fn format_chain(chain: &Vec<ChainLink>, package_name: &str) {
+    let package_name_requested_as = &chain[0].requested_as;
+    print!("{:}@{:}", package_name, package_name_requested_as);
+
+    for (i, dep) in chain.iter().enumerate() {
+        if i + 1 < chain.len() {
+            print!(
+                " -> {:}@{:} (Requested as {:})",
+                dep.name,
+                dep.version,
+                chain[i + 1].requested_as
+            );
+        } else {
+            print!(" -> {:}@{:}", dep.name, dep.version,);
+        }
+    }
+
+    println!();
+}
+
 fn main() {
     let cli = Cli::parse();
 
-    let lockfile_type = match check_lockfile(&cli.path) {
-        Ok(lockfile_type) => lockfile_type,
-        Err(err) => panic!("{}", err),
-    };
-
     let lockfiles = find_lockfiles(&cli.path);
 
-    for lock_file in lockfiles {
-        let lockfile_content = match parse_lockfile(&lock_file.1) {
+    for (_, path) in lockfiles {
+        println!("\nSearching in: {}", path.display());
+        let lockfile_content = match parse_lockfile(&path) {
             Ok(content) => content,
             Err(err) => panic!("{}", err),
         };
         let parsed = parse_str(&lockfile_content).unwrap();
 
         if package_exists(&parsed.entries, &cli.package) {
-            let parents = find_dependency_chains(&parsed.entries, &cli.package);
-            println!("Found {} - parents: {:?}", cli.package, parents);
+            let chains = find_dependency_chains(&parsed.entries, &cli.package);
+            for chain in chains {
+                format_chain(&chain, &cli.package);
+            }
         } else {
             println!("Package {} not found", cli.package);
         }
