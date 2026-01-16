@@ -16,7 +16,15 @@ struct Cli {
 }
 
 fn format_chain(chain: &Vec<ChainLink>, package_name: &str, package_version: &str) {
-    // TODO: if the dep is the root then this panicks
+    if chain.is_empty() {
+        print!(
+            "{:}@{:} (is a direct dependency)",
+            package_name, package_version
+        );
+
+        return;
+    }
+
     let package_name_requested_as = &chain[0].requested_as;
     print!(
         "{:}@{:} (requested as {:})",
