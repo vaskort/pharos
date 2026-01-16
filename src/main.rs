@@ -15,15 +15,18 @@ struct Cli {
     path: String,
 }
 
-fn format_chain(chain: &Vec<ChainLink>, package_name: &str) {
+fn format_chain(chain: &Vec<ChainLink>, package_name: &str, package_version: &str) {
     // TODO: if the dep is the root then this panicks
     let package_name_requested_as = &chain[0].requested_as;
-    print!("{:}@{:}", package_name, package_name_requested_as);
+    print!(
+        "{:}@{:} (requested as {:})",
+        package_name, package_version, package_name_requested_as
+    );
 
     for (i, dep) in chain.iter().enumerate() {
         if i + 1 < chain.len() {
             print!(
-                " -> {:}@{:} (Requested as {:})",
+                " -> {:}@{:} (requested as {:})",
                 dep.name,
                 dep.version,
                 chain[i + 1].requested_as
@@ -72,7 +75,7 @@ fn main() {
         if package_exists(&parsed.entries, &package_name, &package_version) {
             let chains = find_dependency_chains(&parsed.entries, &package_name, &package_version);
             for chain in chains {
-                format_chain(&chain, &package_name);
+                format_chain(&chain, &package_name, &package_version);
             }
         } else {
             println!("Package {} not found", package_name);
