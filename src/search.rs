@@ -7,37 +7,52 @@ pub struct ChainLink {
     pub requested_as: String,
 }
 
-pub fn package_exists(entries: &[Entry], package_name: &str) -> bool {
+pub fn package_exists(entries: &[Entry], package_name: &str, package_version: &str) -> bool {
     for entry in entries.iter() {
-        if entry.name == package_name {
+        if entry.name == package_name && entry.version == package_version {
             return true;
         }
     }
     false
 }
 
-pub fn find_dependency_chains(entries: &[Entry], package_name: &str) -> Vec<Vec<ChainLink>> {
+pub fn find_dependency_chains(
+    entries: &[Entry],
+    package_name: &str,
+    package_version: &str,
+) -> Vec<Vec<ChainLink>> {
     let mut chains = Vec::new();
     let initial_chain = Vec::new();
+    let target_entry = entries
+        .iter()
+        .find(|e| e.name == package_name && e.version == package_version);
+    let target_descriptors = match target_entry {
+        Some(entry) => &entry.descriptors,
+        None => return chains,
+    };
+
+    helper(entries, target_descriptors, initial_chain, &mut chains);
 
     fn helper(
         entries: &[Entry],
-        current_package: &str,
+        descriptors: &Vec<(&str, &str)>,
         current_chain: Vec<ChainLink>,
         chains: &mut Vec<Vec<ChainLink>>,
     ) {
         let mut found_parent = false;
         for entry in entries {
             for (dep_name, dep_version) in &entry.dependencies {
-                if *dep_name == current_package {
+                if (descriptors).contains(&(*dep_name, *dep_version)) {
                     found_parent = true;
                     let mut branch = current_chain.clone();
+
                     branch.push(ChainLink {
                         name: entry.name.to_string(),
                         version: entry.version.to_string(),
                         requested_as: dep_version.to_string(),
                     });
-                    helper(entries, entry.name, branch, chains);
+
+                    helper(entries, &entry.descriptors, branch, chains);
                 }
             }
         }
@@ -45,8 +60,6 @@ pub fn find_dependency_chains(entries: &[Entry], package_name: &str) -> Vec<Vec<
             chains.push(current_chain);
         }
     }
-
-    helper(entries, package_name, initial_chain, &mut chains);
 
     chains
 }
