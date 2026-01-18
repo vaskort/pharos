@@ -64,7 +64,12 @@ fn parse_package(input: &str) -> Option<(&str, &str)> {
     }
 }
 
-fn show_versions(registry_cache: &RegistryCache, package_name: &str, parent: &str) {
+fn show_versions(
+    registry_cache: &RegistryCache,
+    package_name: &str,
+    package_version: &str,
+    parent: &str,
+) {
     if let Some(parent_data) = registry_cache.get(parent) {
         let mut versions: Vec<&String> = parent_data.versions.keys().collect();
         versions.sort_by(|a, b| match (Version::parse(a), Version::parse(b)) {
@@ -74,15 +79,21 @@ fn show_versions(registry_cache: &RegistryCache, package_name: &str, parent: &st
             (Err(_), Err(_)) => a.cmp(b),
         });
 
-        dbg!(versions);
-
-        for (version_num, version_info) in parent_data.versions.iter() {
-            if let Some(deps) = &version_info.dependencies {
-                if let Some(dep_version) = deps.get(package_name) {
-                    println!(
-                        "{}@{} -> {}: {}",
-                        parent, version_num, package_name, dep_version
-                    );
+        for version in &versions {
+            if let Some(version_info) = parent_data.versions.get(*version) {
+                if let Some(deps) = &version_info.dependencies {
+                    if let Some(dep_version) = deps.get(package_name) {
+                        if let (Ok(dep_v), Ok(pkg_v)) =
+                            (Version::parse(dep_version), Version::parse(package_version))
+                        {
+                            if dep_v >= pkg_v {
+                                println!(
+                                    "{}@{} -> {}: {}",
+                                    parent, version, package_name, dep_version
+                                );
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -119,7 +130,12 @@ fn main() {
                 format_chain(&chain, &package_name, &package_version);
             }
 
-            show_versions(&registry_cache, "qs", "body-parser");
+            show_versions(
+                &registry_cache,
+                &package_name,
+                &package_version,
+                "body-parser",
+            );
         } else {
             println!("Package {} not found", package_name);
         }
