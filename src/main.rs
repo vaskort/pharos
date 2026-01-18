@@ -2,11 +2,11 @@ mod lockfile;
 mod registry;
 mod search;
 
-use std::collections::HashMap;
-
 use clap::Parser;
 use lockfile::{find_lockfiles, parse_lockfile};
 use search::{ChainLink, find_dependency_chains, package_exists};
+use semver::Version;
+use std::collections::HashMap;
 use yarn_lock_parser::parse_str;
 
 use crate::registry::{RegistryCache, find_parent_versions};
@@ -64,6 +64,31 @@ fn parse_package(input: &str) -> Option<(&str, &str)> {
     }
 }
 
+fn show_versions(registry_cache: &RegistryCache, package_name: &str, parent: &str) {
+    if let Some(parent_data) = registry_cache.get(parent) {
+        let mut versions: Vec<&String> = parent_data.versions.keys().collect();
+        versions.sort_by(|a, b| match (Version::parse(a), Version::parse(b)) {
+            (Ok(v_a), Ok(v_b)) => v_a.cmp(&v_b),
+            (Ok(_), Err(_)) => std::cmp::Ordering::Less,
+            (Err(_), Ok(_)) => std::cmp::Ordering::Greater,
+            (Err(_), Err(_)) => a.cmp(b),
+        });
+
+        dbg!(versions);
+
+        for (version_num, version_info) in parent_data.versions.iter() {
+            if let Some(deps) = &version_info.dependencies {
+                if let Some(dep_version) = deps.get(package_name) {
+                    println!(
+                        "{}@{} -> {}: {}",
+                        parent, version_num, package_name, dep_version
+                    );
+                }
+            }
+        }
+    }
+}
+
 fn main() {
     let cli = Cli::parse();
 
@@ -93,6 +118,8 @@ fn main() {
             for chain in chains {
                 format_chain(&chain, &package_name, &package_version);
             }
+
+            show_versions(&registry_cache, "qs", "body-parser");
         } else {
             println!("Package {} not found", package_name);
         }

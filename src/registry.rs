@@ -7,12 +7,12 @@ pub type RegistryCache = HashMap<String, RegistryResponse>;
 
 #[derive(Deserialize, Debug)]
 pub struct RegistryResponse {
-    versions: HashMap<String, VersionInfo>,
+    pub versions: HashMap<String, VersionInfo>,
 }
 
 #[derive(Deserialize, Debug)]
-struct VersionInfo {
-    dependencies: Option<HashMap<String, String>>,
+pub struct VersionInfo {
+    pub dependencies: Option<HashMap<String, String>>,
 }
 
 pub fn get_package_data(package: &str) -> Result<RegistryResponse, reqwest::Error> {
