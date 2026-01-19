@@ -1,0 +1,36 @@
+{
+  "name": "@vaskort/pharos",
+  "version": "0.1.0",
+  "description": "A CLI tool to help upgrade vulnerable JavaScript packages by analyzing dependency chains",
+  "bin": {
+    "pharos": "./bin/pharos.js"
+  },
+  "scripts": {
+    "postinstall": "node ./scripts/install.js"
+  },
+  "files": [
+    "bin",
+    "scripts",
+    "binaries",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "security",
+    "dependencies",
+    "npm",
+    "yarn",
+    "vulnerabilities",
+    "cli"
+  ],
+  "author": "Vasilis Kortsimelidis",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/VasilisK/pharos"
+  },
+  "homepage": "https://github.com/VasilisK/pharos",
+  "engines": {
+    "node": ">=12.0.0"
+  }
+}

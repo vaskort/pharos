@@ -15,7 +15,23 @@ Security scanners tell you *what* is vulnerable, but not *why* it's there or *ho
 
 ## Installation
 
-Coming soon via npx (temporarily unavailable while setting up npm distribution).
+### Via npx (Recommended)
+
+Run without installing:
+```bash
+npx pharos-cli minimist@1.2.5
+```
+
+### Global Installation
+
+```bash
+npm install -g pharos-cli
+```
+
+Then use directly:
+```bash
+pharos minimist@1.2.5
+```
 
 ## Usage
 

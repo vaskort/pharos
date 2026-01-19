@@ -1,2 +1,9 @@
 /target
 .claude
+
+# npm
+node_modules/
+binaries/
+
+# npm pack
+*.tgz
