@@ -53,7 +53,5 @@ pub fn find_parent_versions(chains: &Vec<Vec<ChainLink>>, registry_cache: &mut R
                 registry_cache.insert(parent.to_string(), data);
             }
         }
-
-        dbg!(&registry_cache.keys());
     }
 }
