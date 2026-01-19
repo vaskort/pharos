@@ -34,9 +34,9 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/VasilisK/pharos"
+    "url": "https://github.com/vaskort/pharos"
   },
-  "homepage": "https://github.com/VasilisK/pharos",
+  "homepage": "https://github.com/vaskort/pharos",
   "engines": {
     "node": ">=22.0.0"
   }
