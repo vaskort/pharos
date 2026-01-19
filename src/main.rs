@@ -1,12 +1,14 @@
 mod lockfile;
 mod registry;
 mod search;
+mod utils;
 
 use clap::Parser;
 use lockfile::{find_lockfiles, parse_lockfile};
 use search::{ChainLink, find_dependency_chains, package_exists};
 use semver::Version;
 use std::collections::HashMap;
+use utils::clean_version;
 use yarn_lock_parser::parse_str;
 
 use crate::registry::{RegistryCache, find_parent_versions};
@@ -83,9 +85,11 @@ fn show_versions(
             if let Some(version_info) = parent_data.versions.get(*version) {
                 if let Some(deps) = &version_info.dependencies {
                     if let Some(dep_version) = deps.get(package_name) {
-                        if let (Ok(dep_v), Ok(pkg_v)) =
-                            (Version::parse(dep_version), Version::parse(package_version))
-                        {
+                        let clean_version = clean_version(&dep_version);
+                        if let (Ok(dep_v), Ok(pkg_v)) = (
+                            Version::parse(clean_version),
+                            Version::parse(package_version),
+                        ) {
                             if dep_v >= pkg_v {
                                 println!(
                                     "{}@{} -> {}: {}",
