@@ -81,7 +81,3 @@ pharos semver@7.0.0 --path ~/projects --recursive
 ## License
 
 MIT - see [LICENSE](LICENSE)
-
----
-
-Made with ❤️ by [Vasilis Kortsimelidis](https://github.com/VasilisK)
