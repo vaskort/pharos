@@ -66,12 +66,14 @@ fn parse_package(input: &str) -> Option<(&str, &str)> {
     }
 }
 
-fn show_versions(
+fn show_parent_updates(
     registry_cache: &RegistryCache,
     package_name: &str,
     package_version: &str,
     parent: &str,
-) {
+) -> Option<String> {
+    let mut min_fixed_version: Option<String> = None;
+
     if let Some(parent_data) = registry_cache.get(parent) {
         let mut versions: Vec<&String> = parent_data.versions.keys().collect();
         versions.sort_by(|a, b| match (Version::parse(a), Version::parse(b)) {
@@ -90,7 +92,10 @@ fn show_versions(
                             Version::parse(clean_version),
                             Version::parse(package_version),
                         ) {
-                            if dep_v >= pkg_v {
+                            if dep_v > pkg_v {
+                                if min_fixed_version.is_none() {
+                                    min_fixed_version = Some(version.to_string());
+                                }
                                 println!(
                                     "{}@{} -> {}: {}",
                                     parent, version, package_name, dep_version
@@ -102,6 +107,8 @@ fn show_versions(
             }
         }
     }
+
+    min_fixed_version
 }
 
 fn main() {
@@ -132,14 +139,27 @@ fn main() {
 
             for chain in chains {
                 format_chain(&chain, &package_name, &package_version);
-            }
 
-            show_versions(
-                &registry_cache,
-                &package_name,
-                &package_version,
-                "body-parser",
-            );
+                let mut chain_package_name: String = package_name.to_string();
+                let mut chain_package_version: String = package_version.to_string();
+                for chain_link in &chain {
+                    if let Some(min_updated_version) = show_parent_updates(
+                        &registry_cache,
+                        &chain_package_name,
+                        &chain_package_version,
+                        &chain_link.name,
+                    ) {
+                        chain_package_name = chain_link.name.clone();
+                        dbg!(&min_updated_version);
+                        chain_package_version = min_updated_version;
+                    } else {
+                        println!(
+                            "Parent version that updates {} was not found.",
+                            package_name
+                        );
+                    }
+                }
+            }
         } else {
             println!("Package {} not found", package_name);
         }
