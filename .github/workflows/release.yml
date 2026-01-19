@@ -6,84 +6,76 @@ on:
       - "v*"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
-    name: Build ${{ matrix.platform.os_name }}
-    runs-on: ${{ matrix.platform.os }}
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        platform:
-          - os_name: Linux-x86_64
-            os: ubuntu-20.04
+        include:
+          - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            bin: pharos
-            name: pharos-linux
-
-          - os_name: Windows-x86_64
-            os: windows-latest
-            target: x86_64-pc-windows-msvc
-            bin: pharos.exe
-            name: pharos-win.exe
-
-          - os_name: macOS-x86_64
-            os: macOS-latest
+            artifact_name: pharos
+            asset_name: pharos-linux
+          - os: macos-latest
             target: x86_64-apple-darwin
-            bin: pharos
-            name: pharos-macos
-
-          - os_name: macOS-aarch64
-            os: macOS-latest
+            artifact_name: pharos
+            asset_name: pharos-macos
+          - os: macos-latest
             target: aarch64-apple-darwin
-            bin: pharos
-            name: pharos-macos-arm64
+            artifact_name: pharos
+            asset_name: pharos-macos-arm64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: pharos.exe
+            asset_name: pharos-win.exe
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - name: Setup Rust
+      - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform.target }}
+          targets: ${{ matrix.target }}
 
-      - name: Build binary
-        run: cargo build --release --target ${{ matrix.platform.target }}
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Upload binary
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.platform.name }}
-          path: target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }}
+          name: ${{ matrix.asset_name }}
+          path: target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
 
   publish-npm:
     name: Publish to npm
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: "18"
+          node-version: "20"
           registry-url: "https://registry.npmjs.org"
 
-      - name: Create binaries directory
-        run: mkdir -p binaries
-
-      - name: Download all binaries
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      - name: Move binaries to binaries directory
+      - name: Prepare binaries
         run: |
-          mv artifacts/pharos-linux/pharos binaries/pharos-linux
-          mv artifacts/pharos-win.exe/pharos.exe binaries/pharos-win.exe
-          mv artifacts/pharos-macos/pharos binaries/pharos-macos
-          mv artifacts/pharos-macos-arm64/pharos binaries/pharos-macos-arm64
+          mkdir -p binaries
+          cp artifacts/pharos-linux/pharos binaries/pharos-linux
+          cp artifacts/pharos-win.exe/pharos.exe binaries/pharos-win.exe
+          cp artifacts/pharos-macos/pharos binaries/pharos-macos
+          cp artifacts/pharos-macos-arm64/pharos binaries/pharos-macos-arm64
           chmod +x binaries/pharos-linux
           chmod +x binaries/pharos-macos
           chmod +x binaries/pharos-macos-arm64
@@ -94,28 +86,31 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-  create-release:
+  release:
     name: Create GitHub Release
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - name: Download all binaries
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
+      - name: List downloaded artifacts
+        run: ls -R artifacts/
+
+      - name: Flatten artifacts
+        run: |
+          mkdir -p release-assets
+          find artifacts -type f -exec cp {} release-assets/ \;
+          ls -la release-assets/
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: |
-            artifacts/pharos-linux/pharos
-            artifacts/pharos-win.exe/pharos.exe
-            artifacts/pharos-macos/pharos
-            artifacts/pharos-macos-arm64/pharos
-          draft: false
-          prerelease: false
+          files: release-assets/*
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
