@@ -154,9 +154,10 @@ fn main() {
                 println!();
 
                 let mut this_chain_fixed = true;
-
                 let mut chain_package_name: String = package_name.to_string();
                 let mut chain_package_version: String = package_version.to_string();
+                let mut fix_path: Vec<(String, String)> = Vec::new();
+
                 for chain_link in &chain {
                     if let Some(min_updated_version) = show_parent_updates(
                         &registry_cache,
@@ -164,14 +165,21 @@ fn main() {
                         &chain_package_version,
                         &chain_link.name,
                     ) {
+                        fix_path.push((chain_link.name.clone(), min_updated_version.clone()));
                         chain_package_name = chain_link.name.clone();
-                        dbg!(&min_updated_version);
                         chain_package_version = min_updated_version;
                     } else {
                         println!(
                             "No {} version found that updates {} beyond {}",
                             chain_link.name, chain_package_name, chain_package_version
                         );
+
+                        if !fix_path.is_empty() {
+                            println!("Fix path so far:");
+                            for (pkg, ver) in &fix_path {
+                                println!("  {} >= {}", pkg, ver);
+                            }
+                        }
                         this_chain_fixed = false;
                         break;
                     }
