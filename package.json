@@ -21,7 +21,14 @@
     "npm",
     "yarn",
     "vulnerabilities",
-    "cli"
+    "cli",
+    "dependency-tree",
+    "audit",
+    "yarn-why",
+    "lockfile",
+    "rust",
+    "security-tools",
+    "dependency-management"
   ],
   "author": "Vasilis Kortsimelidis",
   "license": "MIT",
