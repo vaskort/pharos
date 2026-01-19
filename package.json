@@ -1,5 +1,5 @@
 {
-  "name": "@vaskort/pharos",
+  "name": "pharos-cli",
   "version": "0.1.0",
   "description": "A CLI tool to help upgrade vulnerable JavaScript packages by analyzing dependency chains",
   "bin": {
