@@ -34,10 +34,11 @@ pub fn parse_lockfile(lock_file: &Path) -> Result<String, String> {
     read_to_string(lock_file).map_err(|err| err.to_string())
 }
 
-pub fn find_lockfiles(project_path: &str) -> Vec<(LockFileType, PathBuf)> {
+pub fn find_lockfiles(project_path: &str, recursive: bool) -> Vec<(LockFileType, PathBuf)> {
     let mut locks = Vec::new();
 
     for entry in WalkBuilder::new(project_path)
+        .max_depth(if recursive { None } else { Some(1) })
         .build()
         .filter_map(|e| e.ok())
     {

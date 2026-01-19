@@ -4,6 +4,7 @@ mod search;
 mod utils;
 
 use clap::Parser;
+use colored::Colorize;
 use lockfile::{find_lockfiles, parse_lockfile};
 use search::{ChainLink, find_dependency_chains, package_exists};
 use semver::Version;
@@ -124,31 +125,45 @@ fn process_lockfile(
     package_version: &str,
     registry_cache: &mut RegistryCache,
 ) {
-    println!("\n════════════════════════════════════════════════════════════");
-    println!("📁 {}", path.display());
-    println!("════════════════════════════════════════════════════════════");
+    println!(
+        "\n{}",
+        "════════════════════════════════════════════════════════════".cyan()
+    );
+    println!("{}", format!("📁 {}", path.display()).cyan());
+    println!(
+        "{}",
+        "════════════════════════════════════════════════════════════".cyan()
+    );
 
     let lockfile_content = match parse_lockfile(&path) {
         Ok(content) => content,
         Err(err) => {
-            println!("  ✗ Failed to parse lockfile: {}", err);
+            println!("  {}", format!("✗ Failed to parse lockfile: {}", err).red());
+
             return;
         }
     };
     let parsed = parse_str(&lockfile_content).unwrap();
 
     if !package_exists(&parsed.entries, &package_name, &package_version) {
-        println!("  Package {}@{} not found", package_name, package_version);
+        println!(
+            "  {}",
+            format!("Package {}@{} not found", package_name, package_version).red()
+        );
+
         return;
     }
 
-    println!("  ✓ Found {}@{}", package_name, package_version);
+    println!(
+        "  {}",
+        format!("✓ Found {}@{}", package_name, package_version).green()
+    );
 
     let chains = find_dependency_chains(&parsed.entries, &package_name, &package_version);
     find_parent_versions(&chains, registry_cache);
 
     for (i, chain) in chains.iter().enumerate() {
-        println!("\n  ── Chain {} ──", i + 1);
+        println!("\n  {}", format!("── Chain {} ──", i + 1).cyan());
         print!("  ");
         format_chain(&chain, &package_name, &package_version);
 
@@ -168,9 +183,14 @@ fn process_lockfile(
                 chain_package_version = min_updated_version;
             } else {
                 println!(
-                    "  ⚠ No {} version found that updates {} beyond {}",
-                    chain_link.name, chain_package_name, chain_package_version
+                    "  {}",
+                    format!(
+                        "⚠ No {} version found that updates {} beyond {}",
+                        chain_link.name, chain_package_name, chain_package_version
+                    )
+                    .yellow()
                 );
+
                 break;
             }
         }
@@ -182,9 +202,14 @@ fn process_lockfile(
             }
 
             let (pkg, ver) = fix_path.last().unwrap();
-            println!("\n  → Recommended: Update {} to >= {}", pkg, ver);
+            println!(
+                "  {}",
+                format!("→ Recommended: Update {} to >= {}", pkg, ver)
+                    .green()
+                    .bold()
+            );
         } else {
-            println!("  ✗ No fix available for this chain");
+            println!("  {}", "✗ No fix available for this chain".red());
         }
     }
 }
@@ -200,7 +225,7 @@ fn main() {
         }
     };
 
-    let lockfiles = find_lockfiles(&cli.path);
+    let lockfiles = find_lockfiles(&cli.path, cli.recursive);
     let mut registry_cache: RegistryCache = HashMap::new();
 
     for (_, path) in lockfiles {
