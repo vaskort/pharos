@@ -144,8 +144,16 @@ fn main() {
             let chains = find_dependency_chains(&parsed.entries, &package_name, &package_version);
             find_parent_versions(&chains, &mut registry_cache);
 
+            let mut all_chains_fixed = true;
+            let mut any_chain_fixed = false;
+            let mut recommended_fixes: Vec<(String, String)> = Vec::new();
+
             for chain in chains {
+                println!();
                 format_chain(&chain, &package_name, &package_version);
+                println!();
+
+                let mut this_chain_fixed = true;
 
                 let mut chain_package_name: String = package_name.to_string();
                 let mut chain_package_version: String = package_version.to_string();
@@ -161,10 +169,36 @@ fn main() {
                         chain_package_version = min_updated_version;
                     } else {
                         println!(
-                            "Parent version that updates {} was not found.",
-                            package_name
+                            "No {} version found that updates {} beyond {}",
+                            chain_link.name, chain_package_name, chain_package_version
                         );
+                        this_chain_fixed = false;
+                        break;
                     }
+                }
+
+                if this_chain_fixed {
+                    any_chain_fixed = true;
+                    recommended_fixes
+                        .push((chain_package_name.clone(), chain_package_version.clone()));
+                } else {
+                    all_chains_fixed = false;
+                }
+            }
+
+            println!();
+            if all_chains_fixed {
+                println!("✓ Complete fix available for all dependency paths!");
+            } else if any_chain_fixed {
+                println!("⚠ Partial fix available - some dependency paths still vulnerable");
+            } else {
+                println!("✗ No fix currently available");
+            }
+
+            if !recommended_fixes.is_empty() {
+                println!("\nRecommended fixes:");
+                for (pkg, ver) in &recommended_fixes {
+                    println!("  Update {} to {}", pkg, ver);
                 }
             }
         } else {
