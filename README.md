@@ -5,13 +5,13 @@ Trace vulnerable JavaScript dependencies through your dependency tree. Like `yar
 ## Install
 
 ```bash
-npx @vaskort/pharos <package>@<version>
+npx pharos-cli <package>@<version>
 ```
 
 Or install globally:
 
 ```bash
-npm install -g @vaskort/pharos
+npm install -g pharos-cli
 ```
 
 ## Usage
