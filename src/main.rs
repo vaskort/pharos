@@ -84,6 +84,13 @@ fn show_parent_updates(
         });
 
         for version in &versions {
+            // skip pre-release versions
+            if let Ok(parsed) = Version::parse(version) {
+                if !parsed.pre.is_empty() {
+                    continue;
+                }
+            }
+
             if let Some(version_info) = parent_data.versions.get(*version) {
                 if let Some(deps) = &version_info.dependencies {
                     if let Some(dep_version) = deps.get(package_name) {
