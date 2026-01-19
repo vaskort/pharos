@@ -1,6 +1,6 @@
 {
   "name": "pharos-cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A CLI tool to help upgrade vulnerable JavaScript packages by analyzing dependency chains",
   "bin": {
     "pharos": "./bin/pharos.js"
