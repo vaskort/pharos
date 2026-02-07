@@ -143,7 +143,14 @@ fn process_lockfile(
             return;
         }
     };
-    let parsed = parse_str(&lockfile_content).unwrap();
+    let parsed = match parse_str(&lockfile_content) {
+        Ok(parsed) => parsed,
+        Err(err) => {
+            println!("  {}", format!("✗ Failed to parse lockfile: {}", err).red());
+
+            return;
+        }
+    };
 
     if !package_exists(&parsed.entries, &package_name, &package_version) {
         println!(
