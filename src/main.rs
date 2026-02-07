@@ -202,13 +202,12 @@ fn process_lockfile(
             }
         }
 
-        if !fix_path.is_empty() {
+        if let Some((pkg, ver)) = fix_path.last() {
             println!("\n Fix path:");
             for (pkg, ver) in &fix_path {
                 println!("  {} >= {}", pkg, ver);
             }
 
-            let (pkg, ver) = fix_path.last().unwrap();
             println!(
                 "  {}",
                 format!("→ Recommended: Update {} to >= {}", pkg, ver)
