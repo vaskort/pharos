@@ -232,6 +232,11 @@ fn main() {
     };
 
     let lockfiles = find_lockfiles(&cli.path, cli.recursive);
+    if lockfiles.is_empty() {
+        eprintln!("No lockfiles found in {}", cli.path);
+        std::process::exit(2);
+    }
+
     let mut registry_cache: RegistryCache = HashMap::new();
 
     for (_, path) in lockfiles {
