@@ -238,7 +238,6 @@ fn main() {
     }
 
     let mut registry_cache: RegistryCache = HashMap::new();
-
     for (_, path) in lockfiles {
         process_lockfile(&path, package_name, package_version, &mut registry_cache);
     }
