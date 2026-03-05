@@ -19,17 +19,6 @@ impl LockFileType {
     }
 }
 
-pub fn check_lockfile(project_path: &str) -> Result<LockFileType, String> {
-    let yarn_exists = Path::new(project_path).join("yarn.lock").exists();
-    let npm_exists = Path::new(project_path).join("package-lock.json").exists();
-
-    match (yarn_exists, npm_exists) {
-        (true, _) => Ok(LockFileType::Yarn),
-        (_, true) => Ok(LockFileType::Npm),
-        _ => Err("No lockfile found".to_string()),
-    }
-}
-
 pub fn parse_lockfile(lock_file: &Path) -> Result<String, String> {
     read_to_string(lock_file).map_err(|err| err.to_string())
 }
