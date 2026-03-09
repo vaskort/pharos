@@ -242,3 +242,49 @@ fn main() {
         process_lockfile(&path, package_name, package_version, &mut registry_cache);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod test_parse_package {
+        use super::*;
+
+        #[test]
+        fn test_simple() {
+            let expected = Some(("pkg-a", "1.0.0"));
+
+            let result = parse_package("pkg-a@1.0.0");
+
+            assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn test_scoped() {
+            let expected = Some(("@scope/pkg-a", "1.0.0"));
+
+            let result = parse_package("@scope/pkg-a@1.0.0");
+
+            assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn test_no_version() {
+            let expected = None;
+
+            let result = parse_package("pkg-a");
+            assert_eq!(result, expected);
+
+            let result = parse_package("pkg-a@");
+            assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn test_empty() {
+            let expected = None;
+
+            let result = parse_package("");
+            assert_eq!(result, expected);
+        }
+    }
+}
