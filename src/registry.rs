@@ -37,10 +37,7 @@ pub fn get_package_data(package: &str) -> Result<RegistryResponse, reqwest::Erro
     let result = get(registry_url);
 
     match result {
-        Ok(value) => {
-            
-            value.json::<RegistryResponse>()
-        }
+        Ok(value) => value.json::<RegistryResponse>(),
         Err(err) => Err(err),
     }
 }
@@ -87,9 +84,10 @@ pub fn find_parent_versions(chains: &Vec<Vec<ChainLink>>, registry_cache: &mut R
 
     for parent in unique_parents_to_get_data_for {
         if !registry_cache.contains_key(parent)
-            && let Ok(data) = get_package_data(parent) {
-                registry_cache.insert(parent.to_string(), data);
-            }
+            && let Ok(data) = get_package_data(parent)
+        {
+            registry_cache.insert(parent.to_string(), data);
+        }
     }
 }
 
