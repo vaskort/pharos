@@ -33,6 +33,19 @@ struct Cli {
     recursive: bool,
 }
 
+#[derive(Debug, PartialEq)]
+struct PackageSpec<'a> {
+    name: &'a str,
+    version: &'a str, // the cleaned/validated version string
+}
+
+#[derive(Debug, PartialEq)]
+enum ParseError {
+    Empty,
+    MissingVersion,
+    InvalidVersion(String),
+}
+
 fn format_chain(chain: &[ChainLink], package_name: &str, package_version: &str) {
     if chain.is_empty() {
         print!(
@@ -65,15 +78,24 @@ fn format_chain(chain: &[ChainLink], package_name: &str, package_version: &str) 
     println!();
 }
 
-fn parse_package(input: &str) -> Option<(&str, &str)> {
+fn parse_package<'a>(input: &'a str) -> Result<PackageSpec<'a>, ParseError> {
+    let input = input.trim();
+    if input.is_empty() {
+        return Err(ParseError::Empty);
+    }
+
     if let Some((package_name, package_version)) = input.rsplit_once("@") {
+        let package_version = package_version.strip_prefix('v').unwrap_or(package_version);
         if package_version.starts_with(|c: char| c.is_ascii_digit()) {
-            Some((package_name, package_version))
+            Ok(PackageSpec {
+                name: package_name,
+                version: package_version,
+            })
         } else {
-            None
+            Err(ParseError::InvalidVersion(package_version.to_string()))
         }
     } else {
-        None
+        Err(ParseError::MissingVersion)
     }
 }
 
@@ -239,11 +261,18 @@ fn process_lockfile(
 fn main() {
     let cli = Cli::parse();
 
-    let (package_name, package_version) = match parse_package(&cli.package) {
-        Some(result) => result,
-        None => {
-            println!("Invalid package format, did you forget the version?");
-            return;
+    let spec = match parse_package(&cli.package) {
+        Ok(spec) => spec,
+        Err(e) => {
+            match e {
+                ParseError::Empty => eprintln!("No package provided."),
+                ParseError::MissingVersion => eprintln!("Missing version. Use: pharos pkg@1.2.3"),
+                ParseError::InvalidVersion(v) => eprintln!(
+                    "Invalid version '{}'. Please provide an exact semver version (e.g. 1.2.3)",
+                    v
+                ),
+            }
+            std::process::exit(1);
         }
     };
 
@@ -258,8 +287,8 @@ fn main() {
         process_lockfile(
             &lockfile_type,
             &path,
-            package_name,
-            package_version,
+            spec.name,
+            spec.version,
             &mut registry_cache,
         );
     }
@@ -274,7 +303,10 @@ mod tests {
 
         #[test]
         fn test_simple() {
-            let expected = Some(("pkg-a", "1.0.0"));
+            let expected = Ok(PackageSpec {
+                name: "pkg-a",
+                version: "1.0.0",
+            });
 
             let result = parse_package("pkg-a@1.0.0");
 
@@ -283,7 +315,10 @@ mod tests {
 
         #[test]
         fn test_scoped() {
-            let expected = Some(("@scope/pkg-a", "1.0.0"));
+            let expected = Ok(PackageSpec {
+                name: "@scope/pkg-a",
+                version: "1.0.0",
+            });
 
             let result = parse_package("@scope/pkg-a@1.0.0");
 
@@ -292,21 +327,30 @@ mod tests {
 
         #[test]
         fn test_no_version() {
-            let expected = None;
+            let expected = Err(ParseError::MissingVersion);
 
             let result = parse_package("pkg-a");
             assert_eq!(result, expected);
 
+            let expected_invalid = Err(ParseError::InvalidVersion("".to_string()));
+
             let result = parse_package("pkg-a@");
-            assert_eq!(result, expected);
+            assert_eq!(result, expected_invalid);
         }
 
         #[test]
         fn test_empty() {
-            let expected = None;
+            let expected = Err(ParseError::Empty);
 
             let result = parse_package("");
             assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn test_v_prefix() {
+            let result = parse_package("pkg@v1.2.3");
+            assert!(result.is_ok());
+            assert_eq!(result.unwrap().version, "1.2.3");
         }
     }
 }
