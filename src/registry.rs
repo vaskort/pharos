@@ -95,7 +95,6 @@ pub fn find_parent_versions(chains: &Vec<Vec<ChainLink>>, registry_cache: &mut R
 }
 
 #[cfg(test)]
-#[cfg(test)]
 mod tests {
     use super::*;
     use crate::search::ChainLink;

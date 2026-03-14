@@ -21,11 +21,14 @@ use crate::{
 #[derive(Parser)]
 #[command(author, version, about)]
 struct Cli {
+    /// Package to search for in the format name@version (e.g. qs@6.13.0)
     package: String,
 
+    /// Path to the project root
     #[arg(short, long, default_value = ".")]
     path: String,
 
+    /// Search for lockfiles recursively in subdirectories
     #[arg(short, long, default_value = "false")]
     recursive: bool,
 }
