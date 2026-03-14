@@ -17,6 +17,13 @@ impl LockFileType {
             _ => None,
         }
     }
+
+    pub fn file_name(&self) -> &str {
+        match self {
+            LockFileType::Yarn => "yarn.lock",
+            LockFileType::Npm => "package-lock.json",
+        }
+    }
 }
 
 pub fn parse_lockfile(lock_file: &Path) -> Result<String, String> {
@@ -58,6 +65,12 @@ mod tests {
             LockFileType::from_filename("package-lock.json"),
             Some(LockFileType::Npm)
         );
+    }
+
+    #[test]
+    fn test_file_name() {
+        assert_eq!(LockFileType::Yarn.file_name(), "yarn.lock");
+        assert_eq!(LockFileType::Npm.file_name(), "package-lock.json");
     }
 
     #[test]

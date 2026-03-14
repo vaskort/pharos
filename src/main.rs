@@ -142,7 +142,11 @@ fn process_lockfile(
     if matches!(lockfile_type, LockFileType::Npm) {
         println!(
             "  {}",
-            "⚠ package-lock.json parsing not yet supported, skipping".yellow()
+            format!(
+                "⚠ {} parsing not yet supported, skipping",
+                lockfile_type.file_name()
+            )
+            .yellow()
         );
         return;
     }
