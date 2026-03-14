@@ -38,21 +38,21 @@ fn format_chain(chain: &Vec<ChainLink>, package_name: &str, package_version: &st
     }
 
     let package_name_requested_as = &chain[0].requested_as;
-    print!(
+    println!(
         "{:}@{:} (requested as {:})",
         package_name, package_version, package_name_requested_as
     );
 
     for (i, dep) in chain.iter().enumerate() {
         if i + 1 < chain.len() {
-            print!(
-                " -> {:}@{:} (requested as {:})",
+            println!(
+                "    -> {:}@{:} (requested as {:})",
                 dep.name,
                 dep.version,
                 chain[i + 1].requested_as
             );
         } else {
-            print!(" -> {:}@{:}", dep.name, dep.version,);
+            print!("    -> {:}@{:}", dep.name, dep.version,);
         }
     }
 
