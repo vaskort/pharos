@@ -38,8 +38,8 @@ pub fn get_package_data(package: &str) -> Result<RegistryResponse, reqwest::Erro
 
     match result {
         Ok(value) => {
-            let parsed = value.json::<RegistryResponse>();
-            parsed
+            
+            value.json::<RegistryResponse>()
         }
         Err(err) => Err(err),
     }
@@ -83,14 +83,13 @@ pub fn find_unique_parents(chains: &Vec<Vec<ChainLink>>) -> Vec<&str> {
 /// * `chains` - The dependency chains to extract parent package names from.
 /// * `registry_cache` - A mutable cache that stores previously fetched registry data.
 pub fn find_parent_versions(chains: &Vec<Vec<ChainLink>>, registry_cache: &mut RegistryCache) {
-    let unique_parents_to_get_data_for = find_unique_parents(&chains);
+    let unique_parents_to_get_data_for = find_unique_parents(chains);
 
     for parent in unique_parents_to_get_data_for {
-        if !registry_cache.contains_key(parent) {
-            if let Ok(data) = get_package_data(parent) {
+        if !registry_cache.contains_key(parent)
+            && let Ok(data) = get_package_data(parent) {
                 registry_cache.insert(parent.to_string(), data);
             }
-        }
     }
 }
 

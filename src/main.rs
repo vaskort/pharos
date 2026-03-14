@@ -33,7 +33,7 @@ struct Cli {
     recursive: bool,
 }
 
-fn format_chain(chain: &Vec<ChainLink>, package_name: &str, package_version: &str) {
+fn format_chain(chain: &[ChainLink], package_name: &str, package_version: &str) {
     if chain.is_empty() {
         print!(
             "{:}@{:} (is a direct dependency)",
@@ -96,27 +96,24 @@ fn show_parent_updates(
 
         for version in &versions {
             // skip pre-release versions
-            if let Ok(parsed) = Version::parse(version) {
-                if !parsed.pre.is_empty() {
-                    continue;
-                }
+            if let Ok(parsed) = Version::parse(version)
+                && !parsed.pre.is_empty()
+            {
+                continue;
             }
 
-            if let Some(version_info) = parent_data.versions.get(*version) {
-                if let Some(deps) = &version_info.dependencies {
-                    if let Some(dep_version) = deps.get(package_name) {
-                        let clean_version = clean_version(&dep_version);
-                        if let (Ok(dep_v), Ok(pkg_v)) = (
-                            Version::parse(clean_version),
-                            Version::parse(package_version),
-                        ) {
-                            if dep_v > pkg_v {
-                                if min_fixed_version.is_none() {
-                                    min_fixed_version = Some(version.to_string());
-                                }
-                            }
-                        }
-                    }
+            if let Some(version_info) = parent_data.versions.get(*version)
+                && let Some(deps) = &version_info.dependencies
+                && let Some(dep_version) = deps.get(package_name)
+            {
+                let clean_version = clean_version(dep_version);
+                if let (Ok(dep_v), Ok(pkg_v)) = (
+                    Version::parse(clean_version),
+                    Version::parse(package_version),
+                ) && dep_v > pkg_v
+                    && min_fixed_version.is_none()
+                {
+                    min_fixed_version = Some(version.to_string());
                 }
             }
         }
@@ -150,7 +147,7 @@ fn process_lockfile(
         return;
     }
 
-    let lockfile_content = match parse_lockfile(&path) {
+    let lockfile_content = match parse_lockfile(path) {
         Ok(content) => content,
         Err(err) => {
             println!("  {}", format!("✗ Failed to parse lockfile: {}", err).red());
@@ -167,7 +164,7 @@ fn process_lockfile(
         }
     };
 
-    if !package_exists(&parsed.entries, &package_name, &package_version) {
+    if !package_exists(&parsed.entries, package_name, package_version) {
         println!(
             "  {}",
             format!("Package {}@{} not found", package_name, package_version).red()
@@ -181,13 +178,13 @@ fn process_lockfile(
         format!("✓ Found {}@{}", package_name, package_version).green()
     );
 
-    let chains = find_dependency_chains(&parsed.entries, &package_name, &package_version);
+    let chains = find_dependency_chains(&parsed.entries, package_name, package_version);
     find_parent_versions(&chains, registry_cache);
 
     for (i, chain) in chains.iter().enumerate() {
         println!("\n  {}", format!("── Chain {} ──", i + 1).cyan());
         print!("  ");
-        format_chain(&chain, &package_name, &package_version);
+        format_chain(chain, package_name, package_version);
 
         let mut chain_package_name: String = package_name.to_string();
         let mut chain_package_version: String = package_version.to_string();
@@ -195,7 +192,7 @@ fn process_lockfile(
 
         for chain_link in chain {
             if let Some(min_updated_version) = show_parent_updates(
-                &registry_cache,
+                registry_cache,
                 &chain_package_name,
                 &chain_package_version,
                 &chain_link.name,
