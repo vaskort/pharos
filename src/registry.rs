@@ -83,10 +83,20 @@ pub fn find_parent_versions(chains: &Vec<Vec<ChainLink>>, registry_cache: &mut R
     let unique_parents_to_get_data_for = find_unique_parents(chains);
 
     for parent in unique_parents_to_get_data_for {
-        if !registry_cache.contains_key(parent)
-            && let Ok(data) = get_package_data(parent)
-        {
-            registry_cache.insert(parent.to_string(), data);
+        if registry_cache.contains_key(parent) {
+            continue;
+        }
+
+        match get_package_data(parent) {
+            Ok(data) => {
+                registry_cache.insert(parent.to_string(), data);
+            }
+            Err(e) => {
+                eprintln!(
+                    "Something went wrong fetching data for {} with message {}",
+                    parent, e
+                )
+            }
         }
     }
 }
