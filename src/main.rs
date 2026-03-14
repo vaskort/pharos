@@ -13,7 +13,10 @@ use std::path::Path;
 use utils::clean_version;
 use yarn_lock_parser::parse_str;
 
-use crate::registry::{RegistryCache, find_parent_versions};
+use crate::{
+    lockfile::LockFileType,
+    registry::{RegistryCache, find_parent_versions},
+};
 
 #[derive(Parser)]
 #[command(author, version, about)]
@@ -120,6 +123,7 @@ fn show_parent_updates(
 }
 
 fn process_lockfile(
+    lockfile_type: &LockFileType,
     path: &Path,
     package_name: &str,
     package_version: &str,
@@ -134,6 +138,14 @@ fn process_lockfile(
         "{}",
         "════════════════════════════════════════════════════════════".cyan()
     );
+
+    if matches!(lockfile_type, LockFileType::Npm) {
+        println!(
+            "  {}",
+            "⚠ package-lock.json parsing not yet supported, skipping".yellow()
+        );
+        return;
+    }
 
     let lockfile_content = match parse_lockfile(&path) {
         Ok(content) => content,
@@ -238,8 +250,14 @@ fn main() {
     }
 
     let mut registry_cache: RegistryCache = HashMap::new();
-    for (_, path) in lockfiles {
-        process_lockfile(&path, package_name, package_version, &mut registry_cache);
+    for (lockfile_type, path) in lockfiles {
+        process_lockfile(
+            &lockfile_type,
+            &path,
+            package_name,
+            package_version,
+            &mut registry_cache,
+        );
     }
 }
 
