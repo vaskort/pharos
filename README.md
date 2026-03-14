@@ -38,20 +38,24 @@ pharos semver@7.0.0 -p ~/projects -r
 ════════════════════════════════════════════════════════════
 📁 ./yarn.lock
 ════════════════════════════════════════════════════════════
-  ✓ Found minimist@1.2.5
+  ✓ Found qs@6.13.0
 
   ── Chain 1 ──
-  minimist@1.2.5 (requested as ^1.2.5) -> mkdirp@1.0.4 -> webpack@5.0.0
+  qs@6.13.0 (requested as 6.13.0)
+    → body-parser@1.20.3 (requested as 1.20.3)
+    → express@4.21.2 (requested as ^4.18.2)
+    → my-app@19.0.2
 
-  Fix path:
-    mkdirp >= 1.0.5
-    → Recommended: Update mkdirp to >= 1.0.5
+ Fix path:
+  body-parser >= 1.20.4
+  express >= 5.0.0
+  → Recommended: Update express to >= 5.0.0
 ```
 
 ## Limitations
 
-- Only supports `yarn.lock` (npm/pnpm coming soon)
-- Public npm registry only
+- Only parses `yarn.lock` files (`package-lock.json` detection is in place, parsing coming soon)
+- Fix suggestions rely on the public npm registry — private packages in the chain may not have upgrade recommendations
 
 ## License
 
