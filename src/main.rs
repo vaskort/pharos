@@ -117,10 +117,7 @@ fn show_parent_updates(
         });
 
         for version in &versions {
-            // skip pre-release versions
-            if let Ok(parsed) = Version::parse(version)
-                && !parsed.pre.is_empty()
-            {
+            if is_prerelease(version) {
                 continue;
             }
 
@@ -142,6 +139,13 @@ fn show_parent_updates(
     }
 
     min_fixed_version
+}
+
+fn is_prerelease(version: &str) -> bool {
+    match Version::parse(version) {
+        Ok(parsed) => !parsed.pre.is_empty(),
+        Err(_) => false,
+    }
 }
 
 fn process_lockfile(
@@ -297,6 +301,8 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::registry::{RegistryResponse, VersionInfo};
+    use std::collections::HashMap;
 
     mod test_parse_package {
         use super::*;
@@ -351,6 +357,49 @@ mod tests {
             let result = parse_package("pkg@v1.2.3");
             assert!(result.is_ok());
             assert_eq!(result.unwrap().version, "1.2.3");
+        }
+    }
+
+    mod test_show_parent_updates_prerelease {
+        use super::*;
+
+        fn version_info_for(dep: &str, dep_version: &str) -> VersionInfo {
+            VersionInfo {
+                dependencies: Some(HashMap::from([(
+                    dep.to_string(),
+                    dep_version.to_string(),
+                )])),
+            }
+        }
+
+        #[test]
+        fn skips_prerelease_and_uses_stable_version() {
+            let mut registry_cache: RegistryCache = HashMap::new();
+            let parent_data = RegistryResponse {
+                versions: HashMap::from([
+                    ("1.1.0-beta.1".to_string(), version_info_for("pkg", "2.0.0")),
+                    ("1.1.0".to_string(), version_info_for("pkg", "2.0.0")),
+                ]),
+            };
+            registry_cache.insert("parent".to_string(), parent_data);
+
+            let result = show_parent_updates(&registry_cache, "pkg", "1.0.0", "parent");
+            assert_eq!(result, Some("1.1.0".to_string()));
+        }
+
+        #[test]
+        fn returns_none_when_only_prerelease_versions_update_dependency() {
+            let mut registry_cache: RegistryCache = HashMap::new();
+            let parent_data = RegistryResponse {
+                versions: HashMap::from([(
+                    "1.1.0-beta.1".to_string(),
+                    version_info_for("pkg", "2.0.0"),
+                )]),
+            };
+            registry_cache.insert("parent".to_string(), parent_data);
+
+            let result = show_parent_updates(&registry_cache, "pkg", "1.0.0", "parent");
+            assert_eq!(result, None);
         }
     }
 }
