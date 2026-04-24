@@ -23,7 +23,6 @@ A Rust CLI that traces vulnerable JavaScript dependencies and suggests upgrade p
 - `serde` / `serde_json` - Registry response deserialization and JSON parsing support
 - `semver` - Version comparison for upgrade recommendations
 - `colored` - CLI output styling
-- TODO: Parse npm `package-lock.json` (detection is implemented, parsing is not)
 
 ## Implementation Details
 
@@ -50,15 +49,16 @@ Uses `ignore::WalkBuilder` to walk project paths:
 
 - `parse_lockfile()` loads lockfile text from disk
 - `yarn.lock` is parsed via `yarn_lock_parser::parse_str()`
-- `package-lock.json` is currently detected but skipped with a warning
-- Next package-lock step: introduce a project-owned lockfile entry model before adding npm parsing, so Yarn and npm can both adapt into the same search API
+- `package-lock.json` v2/v3 is parsed via `serde_json`
+- `parse_dependency_entries()` converts supported lockfiles into shared `DependencyEntry` values
+- npm v1 `package-lock.json` parsing is not supported yet
 
 ### Dependency chain search
 
 - `package_exists()` validates that the target package/version exists
 - `find_dependency_chains()` walks upward from the vulnerable package to all roots
 - Chain entries are represented by `ChainLink { name, version, requested_as }`
-- Current search logic is still coupled to `yarn_lock_parser::Entry`; refactor this before implementing package-lock parsing
+- Search operates on shared `DependencyEntry` values rather than parser-specific lockfile structs
 
 ### Remediation suggestions
 
@@ -86,14 +86,15 @@ Uses `ignore::WalkBuilder` to walk project paths:
 
 ✅ Find lockfiles with optional recursion  
 ✅ Parse `yarn.lock` files  
+✅ Parse npm `package-lock.json` v2/v3 files  
 ✅ Validate and parse `name@version` CLI input  
 ✅ Search lockfiles for exact package/version  
 ✅ Build and print dependency chains  
 ✅ Query npm registry and suggest parent upgrade paths  
 ✅ Unit and CLI integration coverage for core flows  
-🚧 Introduce internal lockfile entry model for multi-lockfile support  
+✅ Internal lockfile entry model for multi-lockfile support  
 🚧 Determine direct vs transitive dependency ownership from `package.json` metadata  
-⏳ Support npm `package-lock.json` parsing  
+⏳ Support npm `package-lock.json` v1 parsing  
 ⏳ Add override/resolution-specific remediation output
 
 ## Development Notes
@@ -102,5 +103,6 @@ Uses `ignore::WalkBuilder` to walk project paths:
 - Prefer idiomatic pattern matching (`match`, `if let`)
 - Keep modules focused and composable
 - Add/adjust tests with behavior changes (`cargo test`)
+- Follow a TDD loop for code changes: write the smallest relevant test first, run it and confirm it fails for the expected reason, write the minimal implementation, run the test and confirm it passes, then repeat for the next behavior
 - Run `cargo fmt`, `cargo test`, and `cargo clippy --all-targets -- -D warnings` before considering implementation work complete
-- For package-lock work, refactor toward shared internal data structures first; avoid adding npm-specific branching deep inside chain traversal
+- For lockfile support work, adapt each lockfile format into shared internal data structures; avoid adding format-specific branching deep inside chain traversal

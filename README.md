@@ -1,6 +1,6 @@
 # Pharos 🏛️
 
-Trace vulnerable JavaScript dependencies through your dependency tree. Like `yarn why`, but shows the full chain and suggests which parent package to update.
+Trace vulnerable JavaScript dependencies through your dependency tree. Like `yarn why` / `npm explain`, but shows the full chain and suggests which parent package to update.
 
 ## Install
 
@@ -54,7 +54,8 @@ pharos semver@7.0.0 -p ~/projects -r
 
 ## Limitations
 
-- Only parses `yarn.lock` files (`package-lock.json` detection is in place, parsing coming soon)
+- Parses `yarn.lock` and npm `package-lock.json` v2/v3 files
+- npm `package-lock.json` v1 parsing is not supported yet
 - Fix suggestions rely on the public npm registry — private packages in the chain may not have upgrade recommendations
 
 ## License

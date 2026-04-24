@@ -84,4 +84,47 @@ mod find_dependency_chains_tests {
         assert!(parent_names.contains(&"pkg-a"));
         assert!(parent_names.contains(&"pkg-b"));
     }
+
+    #[test]
+    fn uses_package_lock_paths_to_distinguish_duplicate_package_versions() {
+        let content = r#"{
+            "name": "test-project",
+            "version": "1.0.0",
+            "lockfileVersion": 3,
+            "packages": {
+                "": {
+                    "dependencies": {
+                        "parent-a": "^1.0.0",
+                        "parent-b": "^1.0.0"
+                    }
+                },
+                "node_modules/parent-a": {
+                    "version": "1.0.0",
+                    "dependencies": {
+                        "pkg-c": "^1.0.0"
+                    }
+                },
+                "node_modules/parent-b": {
+                    "version": "1.0.0",
+                    "dependencies": {
+                        "pkg-c": "^2.0.0"
+                    }
+                },
+                "node_modules/pkg-c": {
+                    "version": "1.0.0"
+                },
+                "node_modules/parent-b/node_modules/pkg-c": {
+                    "version": "2.0.0"
+                }
+            }
+        }"#;
+        let entries = parse_dependency_entries(&LockFileType::Npm, content).unwrap();
+
+        let chains = find_dependency_chains(&entries, "pkg-c", "2.0.0");
+
+        assert_eq!(chains.len(), 1);
+        assert_eq!(chains[0].len(), 1);
+        assert_eq!(chains[0][0].name, "parent-b");
+        assert_eq!(chains[0][0].requested_as, "^2.0.0");
+    }
 }

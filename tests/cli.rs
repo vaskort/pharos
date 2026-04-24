@@ -17,6 +17,10 @@ fn copy_fixture_as_yarn_lock(dir: &Path, fixture_name: &str) {
     fs::copy(fixture_path, dir.join("yarn.lock")).expect("failed to copy yarn.lock fixture");
 }
 
+fn write_package_lock(dir: &Path, content: &str) {
+    fs::write(dir.join("package-lock.json"), content).expect("failed to write package-lock.json");
+}
+
 #[test]
 fn exits_with_error_when_package_version_is_missing() {
     let output = run_pharos(&["pkg-a"]);
@@ -61,6 +65,40 @@ fn reports_direct_dependency_found_in_yarn_lockfile() {
     let dir = tempdir().unwrap();
     let path = dir.path().to_str().unwrap();
     copy_fixture_as_yarn_lock(dir.path(), "single_package.lock");
+
+    let output = run_pharos(&["pkg-a@1.0.0", "--path", path]);
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Found pkg-a@1.0.0"));
+    assert!(stdout.contains("pkg-a@1.0.0 (is a direct dependency)"));
+}
+
+#[test]
+fn reports_direct_dependency_found_in_package_lockfile() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().to_str().unwrap();
+    write_package_lock(
+        dir.path(),
+        r#"{
+            "name": "test-project",
+            "version": "1.0.0",
+            "lockfileVersion": 3,
+            "packages": {
+                "": {
+                    "name": "test-project",
+                    "version": "1.0.0",
+                    "dependencies": {
+                        "pkg-a": "^1.0.0"
+                    }
+                },
+                "node_modules/pkg-a": {
+                    "version": "1.0.0"
+                }
+            }
+        }"#,
+    );
 
     let output = run_pharos(&["pkg-a@1.0.0", "--path", path]);
 

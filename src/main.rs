@@ -164,18 +164,6 @@ fn process_lockfile(
         "════════════════════════════════════════════════════════════".cyan()
     );
 
-    if matches!(lockfile_type, LockFileType::Npm) {
-        println!(
-            "  {}",
-            format!(
-                "⚠ {} parsing not yet supported, skipping",
-                lockfile_type.file_name()
-            )
-            .yellow()
-        );
-        return;
-    }
-
     let lockfile_content = match parse_lockfile(path) {
         Ok(content) => content,
         Err(err) => {
@@ -187,7 +175,10 @@ fn process_lockfile(
     let entries = match parse_dependency_entries(lockfile_type, &lockfile_content) {
         Ok(entries) => entries,
         Err(err) => {
-            println!("  {}", format!("✗ Failed to parse lockfile: {}", err).red());
+            println!(
+                "  {}",
+                format!("✗ Failed to parse {}: {}", lockfile_type.file_name(), err).red()
+            );
 
             return;
         }

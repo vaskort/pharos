@@ -85,13 +85,33 @@ mod parse_dependency_entries {
     }
 
     #[test]
-    fn returns_unsupported_error_for_npm_lockfiles() {
-        let result = parse_dependency_entries(&LockFileType::Npm, "{}");
+    fn parses_npm_v3_direct_dependency_to_normalized_entries() {
+        let content = r#"{
+            "name": "test-project",
+            "version": "1.0.0",
+            "lockfileVersion": 3,
+            "packages": {
+                "": {
+                    "name": "test-project",
+                    "version": "1.0.0",
+                    "dependencies": {
+                        "pkg-a": "^1.0.0"
+                    }
+                },
+                "node_modules/pkg-a": {
+                    "version": "1.0.0"
+                }
+            }
+        }"#;
 
-        assert_eq!(
-            result,
-            Err("package-lock.json parsing not yet supported".to_string())
-        );
+        let entries = parse_dependency_entries(&LockFileType::Npm, content).unwrap();
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "pkg-a");
+        assert_eq!(entries[0].version, "1.0.0");
+        assert_eq!(entries[0].descriptors[0].name, "pkg-a");
+        assert_eq!(entries[0].descriptors[0].requested_as, "^1.0.0");
+        assert!(entries[0].dependencies.is_empty());
     }
 }
 
