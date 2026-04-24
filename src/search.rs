@@ -1,4 +1,21 @@
-use yarn_lock_parser::Entry;
+/// A package reference inside a lockfile.
+///
+/// For dependencies this is the requested range from the parent package.
+/// For descriptors this is the range that resolved to the entry's concrete version.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DependencySpec {
+    pub name: String,
+    pub requested_as: String,
+}
+
+/// A resolved package entry from a lockfile, independent of the lockfile format.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DependencyEntry {
+    pub name: String,
+    pub version: String,
+    pub descriptors: Vec<DependencySpec>,
+    pub dependencies: Vec<DependencySpec>,
+}
 
 /// A single link in a dependency chain, representing one package
 /// in the path from a direct dependency down to the vulnerable package.
@@ -16,10 +33,14 @@ pub struct ChainLink {
 /// Checks if a specific package at a specific version exists in the lockfile entries.
 ///
 /// # Arguments
-/// * `entries` - The parsed yarn.lock entries
+/// * `entries` - The normalized lockfile entries
 /// * `package_name` - The package name to search for
 /// * `package_version` - The exact version to match
-pub fn package_exists(entries: &[Entry], package_name: &str, package_version: &str) -> bool {
+pub fn package_exists(
+    entries: &[DependencyEntry],
+    package_name: &str,
+    package_version: &str,
+) -> bool {
     for entry in entries.iter() {
         if entry.name == package_name && entry.version == package_version {
             return true;
@@ -41,7 +62,7 @@ pub fn package_exists(entries: &[Entry], package_name: &str, package_version: &s
 /// This returns two chains: `[[pkg-a, pkg-b], [pkg-d]]`.
 ///
 /// # Arguments
-/// * `entries` - The parsed yarn.lock entries
+/// * `entries` - The normalized lockfile entries
 /// * `package_name` - The target package name to trace chains for
 /// * `package_version` - The target package version
 ///
@@ -50,7 +71,7 @@ pub fn package_exists(entries: &[Entry], package_name: &str, package_version: &s
 /// where each inner vec is one path leading to the target package.
 /// Returns empty if the package is not found.
 pub fn find_dependency_chains(
-    entries: &[Entry],
+    entries: &[DependencyEntry],
     package_name: &str,
     package_version: &str,
 ) -> Vec<Vec<ChainLink>> {
@@ -67,22 +88,22 @@ pub fn find_dependency_chains(
     helper(entries, target_descriptors, initial_chain, &mut chains);
 
     fn helper(
-        entries: &[Entry],
-        descriptors: &Vec<(&str, &str)>,
+        entries: &[DependencyEntry],
+        descriptors: &[DependencySpec],
         current_chain: Vec<ChainLink>,
         chains: &mut Vec<Vec<ChainLink>>,
     ) {
         let mut found_parent = false;
         for entry in entries {
-            for (dep_name, dep_version) in &entry.dependencies {
-                if (descriptors).contains(&(*dep_name, *dep_version)) {
+            for dependency in &entry.dependencies {
+                if descriptors.contains(dependency) {
                     found_parent = true;
                     let mut branch = current_chain.clone();
 
                     branch.push(ChainLink {
                         name: entry.name.to_string(),
                         version: entry.version.to_string(),
-                        requested_as: dep_version.to_string(),
+                        requested_as: dependency.requested_as.to_string(),
                     });
 
                     helper(entries, &entry.descriptors, branch, chains);

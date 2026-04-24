@@ -5,7 +5,7 @@ mod utils;
 
 use clap::Parser;
 use colored::Colorize;
-use lockfile::{find_lockfiles, parse_lockfile};
+use lockfile::{find_lockfiles, parse_lockfile, yarn_entries_to_dependency_entries};
 use search::{ChainLink, find_dependency_chains, package_exists};
 use semver::Version;
 use std::collections::HashMap;
@@ -193,8 +193,9 @@ fn process_lockfile(
             return;
         }
     };
+    let entries = yarn_entries_to_dependency_entries(&parsed.entries);
 
-    if !package_exists(&parsed.entries, package_name, package_version) {
+    if !package_exists(&entries, package_name, package_version) {
         println!(
             "  {}",
             format!("Package {}@{} not found", package_name, package_version).red()
@@ -208,7 +209,7 @@ fn process_lockfile(
         format!("✓ Found {}@{}", package_name, package_version).green()
     );
 
-    let chains = find_dependency_chains(&parsed.entries, package_name, package_version);
+    let chains = find_dependency_chains(&entries, package_name, package_version);
     find_parent_versions(&chains, registry_cache);
 
     for (i, chain) in chains.iter().enumerate() {

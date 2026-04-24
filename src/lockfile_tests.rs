@@ -55,6 +55,31 @@ mod parse_lockfile {
     }
 }
 
+mod yarn_entries_to_dependency_entries {
+    use super::*;
+    use std::fs;
+    use yarn_lock_parser::parse_str;
+
+    #[test]
+    fn converts_yarn_entries_to_normalized_entries() {
+        let content = fs::read_to_string("testdata/simple_chain.lock").unwrap();
+        let lockfile = parse_str(&content).unwrap();
+
+        let entries = yarn_entries_to_dependency_entries(&lockfile.entries);
+
+        let pkg_a = entries.iter().find(|entry| entry.name == "pkg-a").unwrap();
+        assert_eq!(pkg_a.version, "1.0.0");
+        assert_eq!(pkg_a.descriptors[0].name, "pkg-a");
+        assert_eq!(pkg_a.descriptors[0].requested_as, "^1.0.0");
+        assert_eq!(pkg_a.dependencies[0].name, "pkg-b");
+        assert_eq!(pkg_a.dependencies[0].requested_as, "^2.0.0");
+
+        let pkg_b = entries.iter().find(|entry| entry.name == "pkg-b").unwrap();
+        assert_eq!(pkg_b.version, "2.0.0");
+        assert!(pkg_b.dependencies.is_empty());
+    }
+}
+
 mod find_lockfiles {
     use super::*;
     use std::fs;

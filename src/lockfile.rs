@@ -1,7 +1,9 @@
+use crate::search::{DependencyEntry, DependencySpec};
 use ignore::WalkBuilder;
 use std::fs::read_to_string;
 use std::path::Path;
 use std::path::PathBuf;
+use yarn_lock_parser::Entry;
 
 #[derive(Debug, PartialEq)]
 pub enum LockFileType {
@@ -28,6 +30,32 @@ impl LockFileType {
 
 pub fn parse_lockfile(lock_file: &Path) -> Result<String, String> {
     read_to_string(lock_file).map_err(|err| err.to_string())
+}
+
+pub fn yarn_entries_to_dependency_entries(entries: &[Entry]) -> Vec<DependencyEntry> {
+    entries
+        .iter()
+        .map(|entry| DependencyEntry {
+            name: entry.name.to_string(),
+            version: entry.version.to_string(),
+            descriptors: entry
+                .descriptors
+                .iter()
+                .map(|(name, requested_as)| DependencySpec {
+                    name: name.to_string(),
+                    requested_as: requested_as.to_string(),
+                })
+                .collect(),
+            dependencies: entry
+                .dependencies
+                .iter()
+                .map(|(name, requested_as)| DependencySpec {
+                    name: name.to_string(),
+                    requested_as: requested_as.to_string(),
+                })
+                .collect(),
+        })
+        .collect()
 }
 
 pub fn find_lockfiles(project_path: &str, recursive: bool) -> Vec<(LockFileType, PathBuf)> {
