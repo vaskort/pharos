@@ -1,7 +1,6 @@
 use super::*;
-use crate::lockfile::yarn_entries_to_dependency_entries;
+use crate::lockfile::{LockFileType, parse_dependency_entries};
 use std::fs;
-use yarn_lock_parser::parse_str;
 
 fn load_fixture(name: &str) -> String {
     let path = format!("testdata/{}", name);
@@ -10,8 +9,7 @@ fn load_fixture(name: &str) -> String {
 
 fn load_entries(name: &str) -> Vec<DependencyEntry> {
     let content = load_fixture(name);
-    let lockfile = parse_str(&content).unwrap();
-    yarn_entries_to_dependency_entries(&lockfile.entries)
+    parse_dependency_entries(&LockFileType::Yarn, &content).unwrap()
 }
 
 mod package_exists_tests {

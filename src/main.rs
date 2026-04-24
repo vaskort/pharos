@@ -5,13 +5,12 @@ mod utils;
 
 use clap::Parser;
 use colored::Colorize;
-use lockfile::{find_lockfiles, parse_lockfile, yarn_entries_to_dependency_entries};
+use lockfile::{find_lockfiles, parse_dependency_entries, parse_lockfile};
 use search::{ChainLink, find_dependency_chains, package_exists};
 use semver::Version;
 use std::collections::HashMap;
 use std::path::Path;
 use utils::clean_version;
-use yarn_lock_parser::parse_str;
 
 use crate::{
     lockfile::LockFileType,
@@ -185,15 +184,14 @@ fn process_lockfile(
             return;
         }
     };
-    let parsed = match parse_str(&lockfile_content) {
-        Ok(parsed) => parsed,
+    let entries = match parse_dependency_entries(lockfile_type, &lockfile_content) {
+        Ok(entries) => entries,
         Err(err) => {
             println!("  {}", format!("✗ Failed to parse lockfile: {}", err).red());
 
             return;
         }
     };
-    let entries = yarn_entries_to_dependency_entries(&parsed.entries);
 
     if !package_exists(&entries, package_name, package_version) {
         println!(

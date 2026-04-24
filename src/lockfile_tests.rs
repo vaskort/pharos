@@ -55,17 +55,15 @@ mod parse_lockfile {
     }
 }
 
-mod yarn_entries_to_dependency_entries {
+mod parse_dependency_entries {
     use super::*;
     use std::fs;
-    use yarn_lock_parser::parse_str;
 
     #[test]
-    fn converts_yarn_entries_to_normalized_entries() {
+    fn parses_yarn_entries_to_normalized_entries() {
         let content = fs::read_to_string("testdata/simple_chain.lock").unwrap();
-        let lockfile = parse_str(&content).unwrap();
 
-        let entries = yarn_entries_to_dependency_entries(&lockfile.entries);
+        let entries = parse_dependency_entries(&LockFileType::Yarn, &content).unwrap();
 
         let pkg_a = entries.iter().find(|entry| entry.name == "pkg-a").unwrap();
         assert_eq!(pkg_a.version, "1.0.0");
@@ -77,6 +75,23 @@ mod yarn_entries_to_dependency_entries {
         let pkg_b = entries.iter().find(|entry| entry.name == "pkg-b").unwrap();
         assert_eq!(pkg_b.version, "2.0.0");
         assert!(pkg_b.dependencies.is_empty());
+    }
+
+    #[test]
+    fn returns_error_for_invalid_yarn_content() {
+        let result = parse_dependency_entries(&LockFileType::Yarn, "not valid yarn lock content");
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn returns_unsupported_error_for_npm_lockfiles() {
+        let result = parse_dependency_entries(&LockFileType::Npm, "{}");
+
+        assert_eq!(
+            result,
+            Err("package-lock.json parsing not yet supported".to_string())
+        );
     }
 }
 
