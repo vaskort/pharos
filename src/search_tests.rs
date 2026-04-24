@@ -38,6 +38,17 @@ mod find_dependency_chains_tests {
     }
 
     #[test]
+    fn returns_empty_chain_for_direct_dependency() {
+        let content = load_fixture("single_package.lock");
+        let lockfile = parse_str(&content).unwrap();
+
+        let chains = find_dependency_chains(&lockfile.entries, "pkg-a", "1.0.0");
+
+        assert_eq!(chains.len(), 1);
+        assert!(chains[0].is_empty());
+    }
+
+    #[test]
     fn returns_single_parent_chain() {
         let content = load_fixture("simple_chain.lock");
         let lockfile = parse_str(&content).unwrap();
@@ -57,7 +68,11 @@ mod find_dependency_chains_tests {
         assert_eq!(chains.len(), 1);
         assert_eq!(chains[0].len(), 2);
         assert_eq!(chains[0][0].name, "pkg-b");
+        assert_eq!(chains[0][0].version, "2.0.0");
+        assert_eq!(chains[0][0].requested_as, "^3.0.0");
         assert_eq!(chains[0][1].name, "pkg-a");
+        assert_eq!(chains[0][1].version, "1.0.0");
+        assert_eq!(chains[0][1].requested_as, "^2.0.0");
     }
 
     #[test]
