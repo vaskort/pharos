@@ -2,6 +2,8 @@
 
 Trace vulnerable JavaScript dependencies through your dependency tree. Like `yarn why` / `npm explain`, but shows the full chain and suggests which parent package to update.
 
+Pharos scans Yarn `yarn.lock` files and npm `package-lock.json` v2/v3 files.
+
 ## Install
 
 ```bash
@@ -17,7 +19,7 @@ npm install -g pharos-cli
 ## Usage
 
 ```bash
-# Check current directory
+# Check current directory for yarn.lock or package-lock.json
 pharos minimist@1.2.5
 
 # Check specific project
@@ -32,19 +34,25 @@ pharos semver@7.0.0 -p ~/projects -r
 - `-p, --path <PATH>` — Directory to search (default: current)
 - `-r, --recursive` — Search subdirectories
 
+## Supported Lockfiles
+
+- `yarn.lock`
+- `package-lock.json` v2/v3
+
+When a directory contains more than one supported lockfile, Pharos checks each one and prints a separate result section per file.
+
 ## Example Output
 
 ```
 ════════════════════════════════════════════════════════════
-📁 ./yarn.lock
+📁 ./package-lock.json
 ════════════════════════════════════════════════════════════
   ✓ Found qs@6.13.0
 
   ── Chain 1 ──
   qs@6.13.0 (requested as 6.13.0)
-    → body-parser@1.20.3 (requested as 1.20.3)
-    → express@4.21.2 (requested as ^4.18.2)
-    → my-app@19.0.2
+    -> body-parser@1.20.3 (requested as 1.20.3)
+    -> express@4.21.2
 
  Fix path:
   body-parser >= 1.20.4
@@ -54,7 +62,6 @@ pharos semver@7.0.0 -p ~/projects -r
 
 ## Limitations
 
-- Parses `yarn.lock` and npm `package-lock.json` v2/v3 files
 - npm `package-lock.json` v1 parsing is not supported yet
 - Fix suggestions rely on the public npm registry — private packages in the chain may not have upgrade recommendations
 
