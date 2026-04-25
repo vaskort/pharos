@@ -5,7 +5,7 @@ Trace vulnerable JavaScript dependencies through your dependency tree. Like `yar
 ## Install
 
 ```bash
-npx pharos-cli <package>@<version>
+npx pharos-cli@latest <package>@<version>
 ```
 
 Or install globally:

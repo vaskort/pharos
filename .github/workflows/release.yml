@@ -94,6 +94,11 @@ jobs:
           chmod +x binaries/pharos-macos-arm64
           ls -la binaries/
 
+      - name: Check npm auth
+        run: npm whoami
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
       - name: Publish to npm
         run: npm publish --access public
         env:
