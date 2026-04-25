@@ -1,5 +1,9 @@
 # Pharos 🏛️
 
+[![CI](https://github.com/vaskort/pharos/actions/workflows/ci.yml/badge.svg)](https://github.com/vaskort/pharos/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/pharos-cli.svg)](https://www.npmjs.com/package/pharos-cli)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Pharos is a lockfile explanation tool for known vulnerable JavaScript package versions.
 
 It is not a vulnerability scanner. Start with an alert from `yarn audit`, `npm audit`, Dependabot, Snyk, or a CVE; then use Pharos to trace why that exact `package@version` is in your lockfile and which parent package may need to change.
