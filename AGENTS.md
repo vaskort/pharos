@@ -94,8 +94,9 @@ Uses `ignore::WalkBuilder` to walk project paths:
 ✅ Unit and CLI integration coverage for core flows  
 ✅ Internal lockfile entry model for multi-lockfile support  
 🚧 Determine direct vs transitive dependency ownership from `package.json` metadata  
+⏳ Add a small JSON output mode for CI usage and downstream tooling  
 ⏳ Support npm `package-lock.json` v1 parsing  
-⏳ Add override/resolution-specific remediation output
+⏳ Improve remediation output with proposed new requested ranges when recommending parent upgrades
 
 ## Development Notes
 
