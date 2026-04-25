@@ -1,8 +1,19 @@
 # Pharos 🏛️
 
-Trace vulnerable JavaScript dependencies through your dependency tree. Like `yarn why` / `npm explain`, but shows the full chain and suggests which parent package to update.
+Pharos is a lockfile explanation tool for known vulnerable JavaScript package versions.
 
-Pharos scans Yarn `yarn.lock` files and npm `package-lock.json` v2/v3 files.
+It is not a vulnerability scanner. Start with an alert from `yarn audit`, `npm audit`, Dependabot, Snyk, or a CVE; then use Pharos to trace why that exact `package@version` is in your lockfile and which parent package may need to change.
+
+Pharos scans Yarn `yarn.lock` files and npm `package-lock.json` v2/v3 files. Like `yarn why` / `npm explain`, it shows the dependency chain, resolved versions, requested ranges, and candidate parent upgrades.
+
+## When To Use This
+
+Use Pharos when you already know the vulnerable package and version:
+
+```bash
+# yarn audit, npm audit, or Dependabot reports request@2.88.2
+npx pharos-cli@latest request@2.88.2 --path ./my-app
+```
 
 ## Install
 
