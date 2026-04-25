@@ -21,6 +21,18 @@ cargo build
 cargo run -- <package>@<version> --path /path/to/js/project
 ```
 
+For example, to scan a local JavaScript project for a specific package version:
+
+```bash
+cargo run -- lodash@4.17.20 --path ~/projects/my-app
+```
+
+If the project path contains multiple apps or nested lockfiles, add `--recursive` (or `-r`):
+
+```bash
+cargo run -- lodash@4.17.20 --path ~/projects/my-app -r
+```
+
 ## Running Tests
 
 ```bash
