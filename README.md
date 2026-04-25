@@ -60,6 +60,8 @@ When a directory contains more than one supported lockfile, Pharos checks each o
   → Recommended: Update express to >= 5.0.0
 ```
 
+In each chain, `package@version` is the resolved package version in the lockfile, while `requested as` shows the version range requested by the parent package.
+
 ## Limitations
 
 - npm `package-lock.json` v1 parsing is not supported yet
