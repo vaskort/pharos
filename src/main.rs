@@ -1,4 +1,5 @@
 mod lockfile;
+mod manifest;
 mod registry;
 mod search;
 mod utils;
@@ -6,6 +7,7 @@ mod utils;
 use clap::Parser;
 use colored::Colorize;
 use lockfile::{find_lockfiles, parse_dependency_entries, parse_lockfile};
+use manifest::{ManifestDependency, read_package_json_dependencies};
 use search::{ChainLink, find_dependency_chains, package_exists};
 use semver::Version;
 use serde::Serialize;
@@ -83,9 +85,23 @@ enum LockfileStatus {
 #[derive(Debug, Serialize)]
 struct ChainReport {
     links: Vec<ChainLinkReport>,
+    owner: Option<DependencyOwner>,
     fix_path: Vec<FixStep>,
     recommended: Option<FixStep>,
     warnings: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+struct DependencyOwner {
+    name: String,
+    dependency_type: String,
+    requested_as: String,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct ChainOwnerGroup {
+    owner: Option<DependencyOwner>,
+    chain_indexes: Vec<usize>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -215,6 +231,7 @@ fn report_chain(
     package_name: &str,
     package_version: &str,
     registry_cache: &RegistryCache,
+    manifest_dependencies: &[ManifestDependency],
 ) -> ChainReport {
     let mut chain_package_name: String = package_name.to_string();
     let mut chain_package_version: String = package_version.to_string();
@@ -253,10 +270,71 @@ fn report_chain(
                 requested_as: chain_link.requested_as.clone(),
             })
             .collect(),
+        owner: find_chain_owner(chain, package_name, manifest_dependencies),
         recommended: fix_path.last().cloned(),
         fix_path,
         warnings,
     }
+}
+
+fn find_chain_owner(
+    chain: &[ChainLink],
+    package_name: &str,
+    manifest_dependencies: &[ManifestDependency],
+) -> Option<DependencyOwner> {
+    let owner_name = chain
+        .last()
+        .map(|chain_link| chain_link.name.as_str())
+        .unwrap_or(package_name);
+
+    manifest_dependencies
+        .iter()
+        .find(|dependency| dependency.name == owner_name)
+        .map(|dependency| DependencyOwner {
+            name: dependency.name.clone(),
+            dependency_type: dependency.dependency_type.clone(),
+            requested_as: dependency.requested_as.clone(),
+        })
+}
+
+fn manifest_dependencies_for_lockfile(path: &Path) -> (Vec<ManifestDependency>, Option<String>) {
+    let Some(parent) = path.parent() else {
+        return (Vec::new(), None);
+    };
+    let manifest_path = parent.join("package.json");
+
+    if !manifest_path.exists() {
+        return (Vec::new(), None);
+    }
+
+    match read_package_json_dependencies(&manifest_path) {
+        Ok(dependencies) => (dependencies, None),
+        Err(err) => (
+            Vec::new(),
+            Some(format!(
+                "Failed to parse package.json at {}: {}",
+                manifest_path.display(),
+                err
+            )),
+        ),
+    }
+}
+
+fn group_chains_by_owner(chains: &[ChainReport]) -> Vec<ChainOwnerGroup> {
+    let mut groups: Vec<ChainOwnerGroup> = Vec::new();
+
+    for (index, chain) in chains.iter().enumerate() {
+        if let Some(group) = groups.iter_mut().find(|group| group.owner == chain.owner) {
+            group.chain_indexes.push(index);
+        } else {
+            groups.push(ChainOwnerGroup {
+                owner: chain.owner.clone(),
+                chain_indexes: vec![index],
+            });
+        }
+    }
+
+    groups
 }
 
 fn analyze_lockfile(
@@ -310,9 +388,22 @@ fn analyze_lockfile(
 
     let chains = find_dependency_chains(&entries, package_name, package_version);
     find_parent_versions(&chains, registry_cache);
+    let (manifest_dependencies, manifest_warning) = manifest_dependencies_for_lockfile(path);
     let chains = chains
         .iter()
-        .map(|chain| report_chain(chain, package_name, package_version, registry_cache))
+        .map(|chain| {
+            let mut report = report_chain(
+                chain,
+                package_name,
+                package_version,
+                registry_cache,
+                &manifest_dependencies,
+            );
+            if let Some(warning) = &manifest_warning {
+                report.warnings.push(warning.clone());
+            }
+            report
+        })
         .collect();
 
     LockfileReport {
@@ -359,32 +450,44 @@ fn print_lockfile_report(report: &LockfileReport, package_name: &str, package_ve
         format!("✓ Found {}@{}", package_name, package_version).green()
     );
 
-    for (i, chain) in report.chains.iter().enumerate() {
-        println!("\n  {}", format!("── Chain {} ──", i + 1).cyan());
-        print!("  ");
-        format_chain(&chain.links, package_name, package_version);
-
-        for warning in &chain.warnings {
-            println!("  {}", format!("⚠ {}", warning).yellow());
+    for group in group_chains_by_owner(&report.chains) {
+        println!("\n Owner:");
+        match &group.owner {
+            Some(owner) => println!(
+                "  {} from {}, requested as {}",
+                owner.name, owner.dependency_type, owner.requested_as
+            ),
+            None => println!("  Not declared in package.json"),
         }
 
-        if let Some(recommended) = &chain.recommended {
-            println!("\n Fix path:");
-            for step in &chain.fix_path {
-                println!("  {} >= {}", step.package, step.minimum_version);
+        for chain_index in group.chain_indexes {
+            let chain = &report.chains[chain_index];
+            println!("\n  {}", format!("── Chain {} ──", chain_index + 1).cyan());
+            print!("  ");
+            format_chain(&chain.links, package_name, package_version);
+
+            for warning in &chain.warnings {
+                println!("  {}", format!("⚠ {}", warning).yellow());
             }
 
-            println!(
-                "  {}",
-                format!(
-                    "→ Recommended: Update {} to >= {}",
-                    recommended.package, recommended.minimum_version
-                )
-                .green()
-                .bold()
-            );
-        } else {
-            println!("  {}", "✗ No fix available for this chain".red());
+            if let Some(recommended) = &chain.recommended {
+                println!("\n Fix path:");
+                for step in &chain.fix_path {
+                    println!("  {} >= {}", step.package, step.minimum_version);
+                }
+
+                println!(
+                    "  {}",
+                    format!(
+                        "→ Recommended: Update {} to >= {}",
+                        recommended.package, recommended.minimum_version
+                    )
+                    .green()
+                    .bold()
+                );
+            } else {
+                println!("  {}", "✗ No fix available for this chain".red());
+            }
         }
     }
 }

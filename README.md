@@ -98,6 +98,9 @@ When a directory contains more than one supported lockfile, Pharos checks each o
 ════════════════════════════════════════════════════════════
   ✓ Found qs@6.13.0
 
+ Owner:
+  express from dependencies, requested as ^4.18.0
+
   ── Chain 1 ──
   qs@6.13.0 (requested as 6.13.0)
     -> body-parser@1.20.3 (requested as 1.20.3)
@@ -113,6 +116,7 @@ In each chain:
 
 - `package@version` is the resolved package version in the lockfile
 - `requested as` is the version range requested by the parent package
+- `Owner` is the top-level package declaration from the sibling `package.json`, when available
 - `Recommended` is the highest parent in the discovered fix path
 
 ## JSON Output
@@ -133,6 +137,11 @@ Use `--json` when another tool needs to consume Pharos output.
       "chains": [
         {
           "links": [],
+          "owner": {
+            "name": "pkg-a",
+            "dependency_type": "dependencies",
+            "requested_as": "^1.0.0"
+          },
           "fix_path": [],
           "recommended": null,
           "warnings": []
@@ -144,10 +153,12 @@ Use `--json` when another tool needs to consume Pharos output.
 ```
 
 `status` is one of `found`, `not_found`, or `error`. Parse errors include an `error` string on the lockfile object.
+When a sibling `package.json` exists, `owner` identifies the top-level declaration that owns the chain. If the chain root is not declared there, `owner` is `null`.
 
 ## Limitations
 
 - npm `package-lock.json` v1 parsing is not supported yet
+- Package ownership is inferred from a `package.json` in the same directory as the lockfile; workspace ownership is not resolved yet
 - Fix suggestions rely on the public npm registry; private packages in the chain may not have upgrade recommendations
 - Candidate upgrades are suggestions based on package metadata; review and test the resulting dependency changes in your project
 

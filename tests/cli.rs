@@ -22,6 +22,14 @@ fn write_package_lock(dir: &Path, content: &str) {
     fs::write(dir.join("package-lock.json"), content).expect("failed to write package-lock.json");
 }
 
+fn write_package_json(dir: &Path, content: &str) {
+    fs::write(dir.join("package.json"), content).expect("failed to write package.json");
+}
+
+fn write_yarn_lock(dir: &Path, content: &str) {
+    fs::write(dir.join("yarn.lock"), content).expect("failed to write yarn.lock");
+}
+
 #[test]
 fn exits_with_error_when_package_version_is_missing() {
     let output = run_pharos(&["pkg-a"]);
@@ -77,6 +85,29 @@ fn reports_direct_dependency_found_in_yarn_lockfile() {
 }
 
 #[test]
+fn reports_direct_dependency_owner_from_package_json() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().to_str().unwrap();
+    copy_fixture_as_yarn_lock(dir.path(), "single_package.lock");
+    write_package_json(
+        dir.path(),
+        r#"{
+            "dependencies": {
+                "pkg-a": "^1.0.0"
+            }
+        }"#,
+    );
+
+    let output = run_pharos(&["pkg-a@1.0.0", "--path", path]);
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Owner:"));
+    assert!(stdout.contains("pkg-a from dependencies, requested as ^1.0.0"));
+}
+
+#[test]
 fn reports_direct_dependency_as_json() {
     let dir = tempdir().unwrap();
     let path = dir.path().to_str().unwrap();
@@ -105,6 +136,7 @@ fn reports_direct_dependency_as_json() {
                     "chains": [
                         {
                             "links": [],
+                            "owner": null,
                             "fix_path": [],
                             "recommended": null,
                             "warnings": []
@@ -113,6 +145,65 @@ fn reports_direct_dependency_as_json() {
                 }
             ]
         })
+    );
+}
+
+#[test]
+fn reports_direct_dependency_owner_as_json() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().to_str().unwrap();
+    copy_fixture_as_yarn_lock(dir.path(), "single_package.lock");
+    write_package_json(
+        dir.path(),
+        r#"{
+            "dependencies": {
+                "pkg-a": "^1.0.0"
+            }
+        }"#,
+    );
+
+    let output = run_pharos(&["pkg-a@1.0.0", "--path", path, "--json"]);
+
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let report: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+
+    assert_eq!(
+        report["lockfiles"][0]["chains"][0]["owner"],
+        json!({
+            "name": "pkg-a",
+            "dependency_type": "dependencies",
+            "requested_as": "^1.0.0"
+        })
+    );
+}
+
+#[test]
+fn reports_invalid_package_json_warning_as_json() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().to_str().unwrap();
+    copy_fixture_as_yarn_lock(dir.path(), "single_package.lock");
+    write_package_json(dir.path(), "not json");
+
+    let output = run_pharos(&["pkg-a@1.0.0", "--path", path, "--json"]);
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let report: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let warnings = report["lockfiles"][0]["chains"][0]["warnings"]
+        .as_array()
+        .unwrap();
+
+    assert_eq!(report["lockfiles"][0]["chains"][0]["owner"], json!(null));
+    assert_eq!(warnings.len(), 1);
+    assert!(
+        warnings[0]
+            .as_str()
+            .unwrap()
+            .contains("Failed to parse package.json")
     );
 }
 
@@ -146,6 +237,30 @@ fn reports_missing_package_as_json() {
                 }
             ]
         })
+    );
+}
+
+#[test]
+fn reports_lockfile_parse_error_as_json() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().to_str().unwrap();
+    write_yarn_lock(dir.path(), "not valid yarn lock content");
+
+    let output = run_pharos(&["pkg-a@1.0.0", "--path", path, "--json"]);
+
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let report: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+
+    assert_eq!(report["lockfiles"][0]["status"], json!("error"));
+    assert_eq!(report["lockfiles"][0]["chains"], json!([]));
+    assert!(
+        report["lockfiles"][0]["error"]
+            .as_str()
+            .unwrap()
+            .contains("Failed to parse yarn.lock")
     );
 }
 

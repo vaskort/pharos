@@ -6,8 +6,9 @@ A Rust CLI that traces vulnerable JavaScript dependencies and suggests upgrade p
 
 ### Modules
 
-- `src/main.rs` - CLI entry point (`clap`), package spec parsing, output formatting, and remediation orchestration
+- `src/main.rs` - CLI entry point (`clap`), package spec parsing, JSON/text report formatting, and remediation orchestration
 - `src/lockfile.rs` - Lockfile discovery and file loading
+- `src/manifest.rs` - `package.json` dependency ownership parsing
 - `src/search.rs` - Dependency existence checks and chain traversal
 - `src/registry.rs` - npm registry fetching and parent package version cache
 - `src/utils.rs` - Shared helper utilities (e.g. semver range cleaning)
@@ -64,16 +65,24 @@ Uses `ignore::WalkBuilder` to walk project paths:
 
 - `find_parent_versions()` fetches/caches npm registry metadata for parent packages in chains
 - `show_parent_updates()` computes the smallest non-prerelease parent version that pulls a higher target dependency version
-- CLI prints:
+- `package.json` ownership is parsed from the manifest next to each lockfile
+- Direct chains are owned by the target package if it is declared in `package.json`
+- Transitive chains are owned by the root/top package in the chain if it is declared in `package.json`
+- Analysis builds shared report structs that are rendered as either human-readable text or JSON
+- Human-readable output prints each lockfile report as soon as it is analyzed and groups chains by `package.json` owner; JSON output collects all lockfiles into one document before printing
+- CLI text output prints:
   - all discovered chains
   - a per-chain "Fix path"
   - a "Recommended" parent upgrade
+- `--json` prints machine-readable output for CI usage and downstream tooling
+- Workspace ownership is not resolved yet; ownership is currently limited to the sibling `package.json`
 
 ### CLI Arguments
 
 - `package` (required) - in `name@version` format (exact version expected)
 - `--path` / `-p` (optional, default: `.`) - project path to scan
 - `--recursive` / `-r` (optional, default: `false`) - recurse into subdirectories
+- `--json` (optional, default: `false`) - print machine-readable JSON instead of human-readable text
 
 ### Testing
 
@@ -93,8 +102,8 @@ Uses `ignore::WalkBuilder` to walk project paths:
 ✅ Query npm registry and suggest parent upgrade paths  
 ✅ Unit and CLI integration coverage for core flows  
 ✅ Internal lockfile entry model for multi-lockfile support  
-🚧 Determine direct vs transitive dependency ownership from `package.json` metadata  
-⏳ Add a small JSON output mode for CI usage and downstream tooling  
+✅ JSON output mode for CI usage and downstream tooling
+✅ Determine direct vs transitive dependency ownership from `package.json` metadata
 ⏳ Support npm `package-lock.json` v1 parsing  
 ⏳ Improve remediation output with proposed new requested ranges when recommending parent upgrades
 
