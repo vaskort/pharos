@@ -1,3 +1,4 @@
+use serde_json::json;
 use std::fs;
 use std::path::Path;
 use std::process::{Command, Output};
@@ -73,6 +74,79 @@ fn reports_direct_dependency_found_in_yarn_lockfile() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Found pkg-a@1.0.0"));
     assert!(stdout.contains("pkg-a@1.0.0 (is a direct dependency)"));
+}
+
+#[test]
+fn reports_direct_dependency_as_json() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().to_str().unwrap();
+    copy_fixture_as_yarn_lock(dir.path(), "single_package.lock");
+
+    let output = run_pharos(&["pkg-a@1.0.0", "--path", path, "--json"]);
+
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let report: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+
+    assert_eq!(
+        report,
+        json!({
+            "package": {
+                "name": "pkg-a",
+                "version": "1.0.0"
+            },
+            "lockfiles": [
+                {
+                    "path": dir.path().join("yarn.lock").display().to_string(),
+                    "lockfile_type": "yarn",
+                    "status": "found",
+                    "chains": [
+                        {
+                            "links": [],
+                            "fix_path": [],
+                            "recommended": null,
+                            "warnings": []
+                        }
+                    ]
+                }
+            ]
+        })
+    );
+}
+
+#[test]
+fn reports_missing_package_as_json() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().to_str().unwrap();
+    copy_fixture_as_yarn_lock(dir.path(), "single_package.lock");
+
+    let output = run_pharos(&["pkg-z@1.0.0", "--path", path, "--json"]);
+
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let report: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+
+    assert_eq!(
+        report,
+        json!({
+            "package": {
+                "name": "pkg-z",
+                "version": "1.0.0"
+            },
+            "lockfiles": [
+                {
+                    "path": dir.path().join("yarn.lock").display().to_string(),
+                    "lockfile_type": "yarn",
+                    "status": "not_found",
+                    "chains": []
+                }
+            ]
+        })
+    );
 }
 
 #[test]

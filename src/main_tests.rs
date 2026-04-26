@@ -144,3 +144,62 @@ mod show_parent_updates_prerelease_tests {
         assert_eq!(result, None);
     }
 }
+
+mod report_chain_tests {
+    use super::*;
+
+    fn version_info_for(dep: &str, dep_version: &str) -> VersionInfo {
+        VersionInfo {
+            dependencies: Some(HashMap::from([(dep.to_string(), dep_version.to_string())])),
+        }
+    }
+
+    fn chain_link(name: &str, version: &str, requested_as: &str) -> ChainLink {
+        ChainLink {
+            name: name.to_string(),
+            version: version.to_string(),
+            requested_as: requested_as.to_string(),
+        }
+    }
+
+    #[test]
+    fn records_fix_path_and_recommended_upgrade() {
+        let registry_cache = HashMap::from([(
+            "parent".to_string(),
+            RegistryResponse {
+                versions: HashMap::from([
+                    ("1.0.0".to_string(), version_info_for("pkg", "1.0.0")),
+                    ("1.1.0".to_string(), version_info_for("pkg", "1.0.1")),
+                ]),
+            },
+        )]);
+        let chain = vec![chain_link("parent", "1.0.0", "^1.0.0")];
+
+        let report = report_chain(&chain, "pkg", "1.0.0", &registry_cache);
+
+        assert_eq!(report.links.len(), 1);
+        assert_eq!(report.links[0].name, "parent");
+        assert_eq!(report.links[0].version, "1.0.0");
+        assert_eq!(report.links[0].requested_as, "^1.0.0");
+        assert_eq!(report.fix_path.len(), 1);
+        assert_eq!(report.fix_path[0].package, "parent");
+        assert_eq!(report.fix_path[0].minimum_version, "1.1.0");
+        assert_eq!(report.recommended.as_ref().unwrap().package, "parent");
+        assert!(report.warnings.is_empty());
+    }
+
+    #[test]
+    fn records_warning_when_no_fix_is_available() {
+        let registry_cache: RegistryCache = HashMap::new();
+        let chain = vec![chain_link("parent", "1.0.0", "^1.0.0")];
+
+        let report = report_chain(&chain, "pkg", "1.0.0", &registry_cache);
+
+        assert!(report.fix_path.is_empty());
+        assert!(report.recommended.is_none());
+        assert_eq!(
+            report.warnings,
+            vec!["No parent version found that updates pkg beyond 1.0.0"]
+        );
+    }
+}

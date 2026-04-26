@@ -72,12 +72,16 @@ pharos qs@6.13.0 --path ./my-app
 
 # Search nested projects recursively
 pharos semver@7.0.0 --path ~/projects --recursive
+
+# Print machine-readable output for CI or downstream tooling
+pharos qs@6.13.0 --path ./my-app --json
 ```
 
 ### Options
 
 - `-p, --path <PATH>` - Directory to search (default: current directory)
 - `-r, --recursive` - Search subdirectories for additional lockfiles
+- `--json` - Print machine-readable JSON instead of human-readable text
 
 ## Supported Lockfiles
 
@@ -110,6 +114,36 @@ In each chain:
 - `package@version` is the resolved package version in the lockfile
 - `requested as` is the version range requested by the parent package
 - `Recommended` is the highest parent in the discovered fix path
+
+## JSON Output
+
+Use `--json` when another tool needs to consume Pharos output.
+
+```json
+{
+  "package": {
+    "name": "pkg-a",
+    "version": "1.0.0"
+  },
+  "lockfiles": [
+    {
+      "path": "./yarn.lock",
+      "lockfile_type": "yarn",
+      "status": "found",
+      "chains": [
+        {
+          "links": [],
+          "fix_path": [],
+          "recommended": null,
+          "warnings": []
+        }
+      ]
+    }
+  ]
+}
+```
+
+`status` is one of `found`, `not_found`, or `error`. Parse errors include an `error` string on the lockfile object.
 
 ## Limitations
 

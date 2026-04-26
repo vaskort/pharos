@@ -8,6 +8,7 @@ use colored::Colorize;
 use lockfile::{find_lockfiles, parse_dependency_entries, parse_lockfile};
 use search::{ChainLink, find_dependency_chains, package_exists};
 use semver::Version;
+use serde::Serialize;
 use std::collections::HashMap;
 use std::path::Path;
 use utils::clean_version;
@@ -30,6 +31,10 @@ struct Cli {
     /// Search for lockfiles recursively in subdirectories
     #[arg(short, long, default_value = "false")]
     recursive: bool,
+
+    /// Print machine-readable JSON output
+    #[arg(long)]
+    json: bool,
 }
 
 #[derive(Debug, PartialEq)]
@@ -45,7 +50,58 @@ enum ParseError {
     InvalidVersion(String),
 }
 
-fn format_chain(chain: &[ChainLink], package_name: &str, package_version: &str) {
+#[derive(Debug, Serialize)]
+struct Report {
+    package: ReportPackage,
+    lockfiles: Vec<LockfileReport>,
+}
+
+#[derive(Debug, Serialize)]
+struct ReportPackage {
+    name: String,
+    version: String,
+}
+
+#[derive(Debug, Serialize)]
+struct LockfileReport {
+    path: String,
+    lockfile_type: String,
+    status: LockfileStatus,
+    chains: Vec<ChainReport>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum LockfileStatus {
+    Found,
+    NotFound,
+    Error,
+}
+
+#[derive(Debug, Serialize)]
+struct ChainReport {
+    links: Vec<ChainLinkReport>,
+    fix_path: Vec<FixStep>,
+    recommended: Option<FixStep>,
+    warnings: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct ChainLinkReport {
+    name: String,
+    version: String,
+    requested_as: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct FixStep {
+    package: String,
+    minimum_version: String,
+}
+
+fn format_chain(chain: &[ChainLinkReport], package_name: &str, package_version: &str) {
     if chain.is_empty() {
         print!(
             "{:}@{:} (is a direct dependency)",
@@ -147,50 +203,155 @@ fn is_prerelease(version: &str) -> bool {
     }
 }
 
-fn process_lockfile(
+fn lockfile_type_name(lockfile_type: &LockFileType) -> String {
+    match lockfile_type {
+        LockFileType::Yarn => "yarn".to_string(),
+        LockFileType::Npm => "npm".to_string(),
+    }
+}
+
+fn report_chain(
+    chain: &[ChainLink],
+    package_name: &str,
+    package_version: &str,
+    registry_cache: &RegistryCache,
+) -> ChainReport {
+    let mut chain_package_name: String = package_name.to_string();
+    let mut chain_package_version: String = package_version.to_string();
+    let mut fix_path: Vec<FixStep> = Vec::new();
+    let mut warnings: Vec<String> = Vec::new();
+
+    for chain_link in chain {
+        if let Some(min_updated_version) = show_parent_updates(
+            registry_cache,
+            &chain_package_name,
+            &chain_package_version,
+            &chain_link.name,
+        ) {
+            fix_path.push(FixStep {
+                package: chain_link.name.clone(),
+                minimum_version: min_updated_version.clone(),
+            });
+            chain_package_name = chain_link.name.clone();
+            chain_package_version = min_updated_version;
+        } else {
+            warnings.push(format!(
+                "No {} version found that updates {} beyond {}",
+                chain_link.name, chain_package_name, chain_package_version
+            ));
+
+            break;
+        }
+    }
+
+    ChainReport {
+        links: chain
+            .iter()
+            .map(|chain_link| ChainLinkReport {
+                name: chain_link.name.clone(),
+                version: chain_link.version.clone(),
+                requested_as: chain_link.requested_as.clone(),
+            })
+            .collect(),
+        recommended: fix_path.last().cloned(),
+        fix_path,
+        warnings,
+    }
+}
+
+fn analyze_lockfile(
     lockfile_type: &LockFileType,
     path: &Path,
     package_name: &str,
     package_version: &str,
     registry_cache: &mut RegistryCache,
-) {
-    println!(
-        "\n{}",
-        "════════════════════════════════════════════════════════════".cyan()
-    );
-    println!("{}", format!("📁 {}", path.display()).cyan());
-    println!(
-        "{}",
-        "════════════════════════════════════════════════════════════".cyan()
-    );
+) -> LockfileReport {
+    let path_display = path.display().to_string();
+    let lockfile_type_name = lockfile_type_name(lockfile_type);
 
     let lockfile_content = match parse_lockfile(path) {
         Ok(content) => content,
         Err(err) => {
-            println!("  {}", format!("✗ Failed to parse lockfile: {}", err).red());
-
-            return;
+            return LockfileReport {
+                path: path_display,
+                lockfile_type: lockfile_type_name,
+                status: LockfileStatus::Error,
+                chains: Vec::new(),
+                error: Some(format!("Failed to parse lockfile: {}", err)),
+            };
         }
     };
     let entries = match parse_dependency_entries(lockfile_type, &lockfile_content) {
         Ok(entries) => entries,
         Err(err) => {
-            println!(
-                "  {}",
-                format!("✗ Failed to parse {}: {}", lockfile_type.file_name(), err).red()
-            );
-
-            return;
+            return LockfileReport {
+                path: path_display,
+                lockfile_type: lockfile_type_name,
+                status: LockfileStatus::Error,
+                chains: Vec::new(),
+                error: Some(format!(
+                    "Failed to parse {}: {}",
+                    lockfile_type.file_name(),
+                    err
+                )),
+            };
         }
     };
 
     if !package_exists(&entries, package_name, package_version) {
-        println!(
-            "  {}",
-            format!("Package {}@{} not found", package_name, package_version).red()
-        );
+        return LockfileReport {
+            path: path_display,
+            lockfile_type: lockfile_type_name,
+            status: LockfileStatus::NotFound,
+            chains: Vec::new(),
+            error: None,
+        };
+    }
 
-        return;
+    let chains = find_dependency_chains(&entries, package_name, package_version);
+    find_parent_versions(&chains, registry_cache);
+    let chains = chains
+        .iter()
+        .map(|chain| report_chain(chain, package_name, package_version, registry_cache))
+        .collect();
+
+    LockfileReport {
+        path: path_display,
+        lockfile_type: lockfile_type_name,
+        status: LockfileStatus::Found,
+        chains,
+        error: None,
+    }
+}
+
+fn print_lockfile_report(report: &LockfileReport, package_name: &str, package_version: &str) {
+    println!(
+        "\n{}",
+        "════════════════════════════════════════════════════════════".cyan()
+    );
+    println!("{}", format!("📁 {}", report.path).cyan());
+    println!(
+        "{}",
+        "════════════════════════════════════════════════════════════".cyan()
+    );
+
+    match report.status {
+        LockfileStatus::Error => {
+            if let Some(error) = &report.error {
+                println!("  {}", format!("✗ {}", error).red());
+            }
+
+            return;
+        }
+        LockfileStatus::NotFound => {
+            println!(
+                "  {}",
+                format!("Package {}@{} not found", package_name, package_version).red()
+            );
+
+            return;
+        }
+        LockfileStatus::Found => {}
     }
 
     println!(
@@ -198,53 +359,29 @@ fn process_lockfile(
         format!("✓ Found {}@{}", package_name, package_version).green()
     );
 
-    let chains = find_dependency_chains(&entries, package_name, package_version);
-    find_parent_versions(&chains, registry_cache);
-
-    for (i, chain) in chains.iter().enumerate() {
+    for (i, chain) in report.chains.iter().enumerate() {
         println!("\n  {}", format!("── Chain {} ──", i + 1).cyan());
         print!("  ");
-        format_chain(chain, package_name, package_version);
+        format_chain(&chain.links, package_name, package_version);
 
-        let mut chain_package_name: String = package_name.to_string();
-        let mut chain_package_version: String = package_version.to_string();
-        let mut fix_path: Vec<(String, String)> = Vec::new();
-
-        for chain_link in chain {
-            if let Some(min_updated_version) = show_parent_updates(
-                registry_cache,
-                &chain_package_name,
-                &chain_package_version,
-                &chain_link.name,
-            ) {
-                fix_path.push((chain_link.name.clone(), min_updated_version.clone()));
-                chain_package_name = chain_link.name.clone();
-                chain_package_version = min_updated_version;
-            } else {
-                println!(
-                    "  {}",
-                    format!(
-                        "⚠ No {} version found that updates {} beyond {}",
-                        chain_link.name, chain_package_name, chain_package_version
-                    )
-                    .yellow()
-                );
-
-                break;
-            }
+        for warning in &chain.warnings {
+            println!("  {}", format!("⚠ {}", warning).yellow());
         }
 
-        if let Some((pkg, ver)) = fix_path.last() {
+        if let Some(recommended) = &chain.recommended {
             println!("\n Fix path:");
-            for (pkg, ver) in &fix_path {
-                println!("  {} >= {}", pkg, ver);
+            for step in &chain.fix_path {
+                println!("  {} >= {}", step.package, step.minimum_version);
             }
 
             println!(
                 "  {}",
-                format!("→ Recommended: Update {} to >= {}", pkg, ver)
-                    .green()
-                    .bold()
+                format!(
+                    "→ Recommended: Update {} to >= {}",
+                    recommended.package, recommended.minimum_version
+                )
+                .green()
+                .bold()
             );
         } else {
             println!("  {}", "✗ No fix available for this chain".red());
@@ -276,15 +413,49 @@ fn main() {
         std::process::exit(2);
     }
 
+    if cli.json {
+        let mut registry_cache: RegistryCache = HashMap::new();
+        let lockfile_reports: Vec<LockfileReport> = lockfiles
+            .iter()
+            .map(|(lockfile_type, path)| {
+                analyze_lockfile(
+                    lockfile_type,
+                    path,
+                    spec.name,
+                    spec.version,
+                    &mut registry_cache,
+                )
+            })
+            .collect();
+        let report = Report {
+            package: ReportPackage {
+                name: spec.name.to_string(),
+                version: spec.version.to_string(),
+            },
+            lockfiles: lockfile_reports,
+        };
+
+        match serde_json::to_string_pretty(&report) {
+            Ok(output) => println!("{}", output),
+            Err(err) => {
+                eprintln!("Failed to serialize JSON output: {}", err);
+                std::process::exit(1);
+            }
+        }
+
+        return;
+    }
+
     let mut registry_cache: RegistryCache = HashMap::new();
-    for (lockfile_type, path) in lockfiles {
-        process_lockfile(
-            &lockfile_type,
-            &path,
+    for (lockfile_type, path) in &lockfiles {
+        let report = analyze_lockfile(
+            lockfile_type,
+            path,
             spec.name,
             spec.version,
             &mut registry_cache,
         );
+        print_lockfile_report(&report, spec.name, spec.version);
     }
 }
 
