@@ -176,47 +176,41 @@ fn show_parent_updates(
     package_version: &str,
     parent: &str,
 ) -> Option<String> {
-    let mut min_fixed_version: Option<String> = None;
+    let package_version = Version::parse(package_version).ok()?;
 
-    if let Some(parent_data) = registry_cache.get(parent) {
-        let mut versions: Vec<&String> = parent_data.versions.keys().collect();
-        versions.sort_by(|a, b| match (Version::parse(a), Version::parse(b)) {
-            (Ok(v_a), Ok(v_b)) => v_a.cmp(&v_b),
-            (Ok(_), Err(_)) => std::cmp::Ordering::Less,
-            (Err(_), Ok(_)) => std::cmp::Ordering::Greater,
-            (Err(_), Err(_)) => a.cmp(b),
+    registry_cache.get(parent).and_then(|parent_data| {
+        let mut versions = parent_data
+            .versions
+            .keys()
+            .map(|version| (version, Version::parse(version).ok()))
+            .collect::<Vec<_>>();
+        versions.sort_by(|(a, parsed_a), (b, parsed_b)| match (parsed_a, parsed_b) {
+            (Some(v_a), Some(v_b)) => v_a.cmp(v_b),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => a.cmp(b),
         });
 
-        for version in &versions {
-            if is_prerelease(version) {
+        for (version, parsed_version) in versions {
+            if parsed_version.is_some_and(|version| !version.pre.is_empty()) {
                 continue;
             }
 
-            if let Some(version_info) = parent_data.versions.get(*version)
+            if let Some(version_info) = parent_data.versions.get(version)
                 && let Some(deps) = &version_info.dependencies
                 && let Some(dep_version) = deps.get(package_name)
             {
                 let clean_version = clean_version(dep_version);
-                if let (Ok(dep_v), Ok(pkg_v)) = (
-                    Version::parse(clean_version),
-                    Version::parse(package_version),
-                ) && dep_v > pkg_v
-                    && min_fixed_version.is_none()
+                if let Ok(dep_version) = Version::parse(clean_version)
+                    && dep_version > package_version
                 {
-                    min_fixed_version = Some(version.to_string());
+                    return Some(version.to_string());
                 }
             }
         }
-    }
 
-    min_fixed_version
-}
-
-fn is_prerelease(version: &str) -> bool {
-    match Version::parse(version) {
-        Ok(parsed) => !parsed.pre.is_empty(),
-        Err(_) => false,
-    }
+        None
+    })
 }
 
 fn lockfile_type_name(lockfile_type: &LockFileType) -> String {

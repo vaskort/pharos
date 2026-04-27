@@ -1,8 +1,10 @@
+use std::collections::HashMap;
+
 /// A package reference inside a lockfile.
 ///
 /// For dependencies this is the requested range from the parent package.
 /// For descriptors this is the range that resolved to the entry's concrete version.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct DependencySpec {
     pub name: String,
     pub requested_as: String,
@@ -75,8 +77,85 @@ pub fn find_dependency_chains(
     package_name: &str,
     package_version: &str,
 ) -> Vec<Vec<ChainLink>> {
+    struct ParentMatch<'a> {
+        order: usize,
+        entry: &'a DependencyEntry,
+        requested_as: &'a str,
+    }
+
+    type ParentIndex<'a> = HashMap<&'a DependencySpec, Vec<ParentMatch<'a>>>;
+
+    fn build_parent_index(entries: &[DependencyEntry]) -> ParentIndex<'_> {
+        let dependency_count = entries
+            .iter()
+            .map(|entry| entry.dependencies.len())
+            .sum::<usize>();
+        let mut index = HashMap::with_capacity(dependency_count);
+        let mut order = 0;
+
+        for entry in entries {
+            for dependency in &entry.dependencies {
+                index
+                    .entry(dependency)
+                    .or_insert_with(Vec::new)
+                    .push(ParentMatch {
+                        order,
+                        entry,
+                        requested_as: &dependency.requested_as,
+                    });
+                order += 1;
+            }
+        }
+
+        index
+    }
+
+    fn matching_parents<'a>(
+        parent_index: &'a ParentIndex<'a>,
+        descriptors: &[DependencySpec],
+    ) -> Vec<&'a ParentMatch<'a>> {
+        let mut parents = descriptors
+            .iter()
+            .filter_map(|descriptor| parent_index.get(descriptor))
+            .flatten()
+            .collect::<Vec<_>>();
+
+        parents.sort_by_key(|parent| parent.order);
+        parents
+    }
+
+    fn helper(
+        parent_index: &ParentIndex<'_>,
+        descriptors: &[DependencySpec],
+        current_chain: &mut Vec<ChainLink>,
+        chains: &mut Vec<Vec<ChainLink>>,
+    ) {
+        let parents = matching_parents(parent_index, descriptors);
+
+        if parents.is_empty() {
+            chains.push(current_chain.clone());
+            return;
+        }
+
+        for parent in parents {
+            current_chain.push(ChainLink {
+                name: parent.entry.name.to_string(),
+                version: parent.entry.version.to_string(),
+                requested_as: parent.requested_as.to_string(),
+            });
+
+            helper(
+                parent_index,
+                &parent.entry.descriptors,
+                current_chain,
+                chains,
+            );
+            current_chain.pop();
+        }
+    }
+
     let mut chains = Vec::new();
-    let initial_chain = Vec::new();
+    let mut current_chain = Vec::new();
     let target_entry = entries
         .iter()
         .find(|e| e.name == package_name && e.version == package_version);
@@ -84,36 +163,14 @@ pub fn find_dependency_chains(
         Some(entry) => &entry.descriptors,
         None => return chains,
     };
+    let parent_index = build_parent_index(entries);
 
-    helper(entries, target_descriptors, initial_chain, &mut chains);
-
-    fn helper(
-        entries: &[DependencyEntry],
-        descriptors: &[DependencySpec],
-        current_chain: Vec<ChainLink>,
-        chains: &mut Vec<Vec<ChainLink>>,
-    ) {
-        let mut found_parent = false;
-        for entry in entries {
-            for dependency in &entry.dependencies {
-                if descriptors.contains(dependency) {
-                    found_parent = true;
-                    let mut branch = current_chain.clone();
-
-                    branch.push(ChainLink {
-                        name: entry.name.to_string(),
-                        version: entry.version.to_string(),
-                        requested_as: dependency.requested_as.to_string(),
-                    });
-
-                    helper(entries, &entry.descriptors, branch, chains);
-                }
-            }
-        }
-        if !found_parent {
-            chains.push(current_chain);
-        }
-    }
+    helper(
+        &parent_index,
+        target_descriptors,
+        &mut current_chain,
+        &mut chains,
+    );
 
     chains
 }

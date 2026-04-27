@@ -1,7 +1,7 @@
 use crate::search::ChainLink;
 use reqwest::blocking::get;
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// A cache that maps package names to their registry data,
 /// so we don't make duplicate HTTP requests for the same package.
@@ -54,15 +54,14 @@ pub fn get_package_data(package: &str) -> Result<RegistryResponse, reqwest::Erro
 ///
 /// # Returns
 /// A deduplicated list of package names, in the order they were first encountered.
-pub fn find_unique_parents(chains: &Vec<Vec<ChainLink>>) -> Vec<&str> {
+pub fn find_unique_parents(chains: &[Vec<ChainLink>]) -> Vec<&str> {
     let mut unique_parents = Vec::new();
+    let mut seen = HashSet::new();
 
     for chain in chains {
         for chain_link in chain {
-            if !unique_parents.contains(&chain_link.name.as_str()) {
-                unique_parents.push(&chain_link.name);
-            } else {
-                continue;
+            if seen.insert(chain_link.name.as_str()) {
+                unique_parents.push(chain_link.name.as_str());
             }
         }
     }
@@ -79,7 +78,7 @@ pub fn find_unique_parents(chains: &Vec<Vec<ChainLink>>) -> Vec<&str> {
 /// # Arguments
 /// * `chains` - The dependency chains to extract parent package names from.
 /// * `registry_cache` - A mutable cache that stores previously fetched registry data.
-pub fn find_parent_versions(chains: &Vec<Vec<ChainLink>>, registry_cache: &mut RegistryCache) {
+pub fn find_parent_versions(chains: &[Vec<ChainLink>], registry_cache: &mut RegistryCache) {
     let unique_parents_to_get_data_for = find_unique_parents(chains);
 
     for parent in unique_parents_to_get_data_for {
