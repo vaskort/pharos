@@ -7,7 +7,10 @@
   },
   "scripts": {
     "postinstall": "node ./scripts/install.js",
-    "version:bump": "node ./scripts/bump-version.js"
+    "version:bump": "node ./scripts/bump-version.js",
+    "docs:dev": "npm --prefix website run dev -- --host 127.0.0.1 --port 4321",
+    "docs:build": "npm --prefix website run build",
+    "docs:preview": "npm --prefix website run preview"
   },
   "files": [
     "bin",
@@ -37,7 +40,7 @@
     "type": "git",
     "url": "git+https://github.com/vaskort/pharos.git"
   },
-  "homepage": "https://github.com/vaskort/pharos",
+  "homepage": "https://vaskort.github.io/pharos/",
   "engines": {
     "node": ">=22.0.0"
   }

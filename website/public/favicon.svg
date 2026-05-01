@@ -1,0 +1,7 @@
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Pharos">
+  <rect width="64" height="64" rx="12" fill="#0f1f1b"/>
+  <path d="M27 17 L37 17 L42 48 L22 48 Z" fill="#f0e7cf"/>
+  <rect x="29" y="20" width="6" height="4" fill="#0f1f1b"/>
+  <path d="M35 22 L56 14 L56 30 Z" fill="#f5b64a"/>
+  <rect x="19" y="48" width="26" height="4" rx="1" fill="#f0e7cf"/>
+</svg>

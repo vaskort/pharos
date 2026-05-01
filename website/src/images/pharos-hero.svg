@@ -1,0 +1,6 @@
+<svg width="320" height="400" viewBox="0 0 320 400" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="pharos-hero-title">
+  <title id="pharos-hero-title">Pharos</title>
+  <path d="M124 60 L166 60 L194 340 L96 340 Z" fill="#f0e7cf"/>
+  <rect x="130" y="76" width="30" height="14" fill="#0f1f1b"/>
+  <path d="M160 83 L304 44 L304 122 Z" fill="#f5b64a"/>
+</svg>

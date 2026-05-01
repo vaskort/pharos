@@ -1,0 +1,8 @@
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="pharos-mark-title">
+  <title id="pharos-mark-title">Pharos</title>
+  <rect width="256" height="256" rx="48" fill="#0f1f1b"/>
+  <path d="M108 68 L148 68 L168 194 L88 194 Z" fill="#f0e7cf"/>
+  <rect x="114" y="78" width="28" height="16" fill="#0f1f1b"/>
+  <path d="M142 86 L226 56 L226 116 Z" fill="#f5b64a"/>
+  <rect x="76" y="194" width="104" height="14" rx="2" fill="#f0e7cf"/>
+</svg>
