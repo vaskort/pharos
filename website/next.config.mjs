@@ -11,7 +11,6 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const nextConfig = {
   pageExtensions: ['js', 'jsx', 'md', 'ts', 'tsx'],
   output: 'export',
-  basePath: '/pharos',
   trailingSlash: true,
   images: { unoptimized: true },
   outputFileTracingRoot: __dirname,

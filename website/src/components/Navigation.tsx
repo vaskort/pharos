@@ -5,7 +5,7 @@ import clsx from 'clsx'
 import { navigation } from '@/lib/navigation'
 
 function normalizePathname(pathname: string) {
-  let normalized = pathname.replace(/^\/pharos(?=\/|$)/, '') || '/'
+  let normalized = pathname || '/'
 
   if (normalized !== '/' && normalized.endsWith('/')) {
     normalized = normalized.slice(0, -1)

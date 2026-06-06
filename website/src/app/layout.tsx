@@ -28,7 +28,7 @@ export const metadata: Metadata = {
   description:
     'Pharos walks your lockfile upward from a known vulnerable package@version and finds the top-level dependency that owns the fix.',
   icons: {
-    icon: '/pharos/favicon.svg',
+    icon: '/favicon.svg',
   },
 }
 

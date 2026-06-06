@@ -39,7 +39,7 @@
     "type": "git",
     "url": "git+https://github.com/vaskort/pharos.git"
   },
-  "homepage": "https://vaskort.github.io/pharos/",
+  "homepage": "https://pharos-cli.io/",
   "engines": {
     "node": ">=22.0.0"
   }
