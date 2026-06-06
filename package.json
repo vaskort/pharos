@@ -8,9 +8,8 @@
   "scripts": {
     "postinstall": "node ./scripts/install.js",
     "version:bump": "node ./scripts/bump-version.js",
-    "docs:dev": "npm --prefix website run dev -- --host 127.0.0.1 --port 4321",
-    "docs:build": "npm --prefix website run build",
-    "docs:preview": "npm --prefix website run preview"
+    "docs:dev": "npm --prefix website run dev -- --hostname 127.0.0.1 --port 3000",
+    "docs:build": "npm --prefix website run build"
   },
   "files": [
     "bin",

@@ -44,7 +44,7 @@ function SearchIcon(props: React.ComponentPropsWithoutRef<'svg'>) {
 function useAutocomplete({
   close,
 }: {
-  close: (autocomplete: Autocomplete) => void
+  close: () => void
 }) {
   let id = useId()
   let router = useRouter()
@@ -63,7 +63,7 @@ function useAutocomplete({
       itemUrl ===
       window.location.pathname + window.location.search + window.location.hash
     ) {
-      close(autocomplete)
+      close()
     }
   }
 
@@ -334,9 +334,15 @@ function SearchDialog({
 
   let { autocomplete, autocompleteState } = useAutocomplete({
     close() {
-      close(autocomplete)
+      setOpen(false)
     },
   })
+
+  useEffect(() => {
+    if (!open) {
+      autocomplete.setQuery('')
+    }
+  }, [open, autocomplete])
 
   useEffect(() => {
     if (open) {

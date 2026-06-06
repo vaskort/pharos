@@ -1,5 +1,4 @@
 import { type Metadata } from 'next'
-import { Inter } from 'next/font/google'
 import localFont from 'next/font/local'
 import clsx from 'clsx'
 
@@ -8,8 +7,8 @@ import { Layout } from '@/components/Layout'
 
 import '@/styles/tailwind.css'
 
-const inter = Inter({
-  subsets: ['latin'],
+const sans = localFont({
+  src: '../fonts/lexend.woff2',
   display: 'swap',
   variable: '--font-inter',
 })
@@ -29,7 +28,7 @@ export const metadata: Metadata = {
   description:
     'Pharos walks your lockfile upward from a known vulnerable package@version and finds the top-level dependency that owns the fix.',
   icons: {
-    icon: '/favicon.svg',
+    icon: '/pharos/favicon.svg',
   },
 }
 
@@ -41,7 +40,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={clsx('h-full antialiased', inter.variable, lexend.variable)}
+      className={clsx('h-full antialiased', sans.variable, lexend.variable)}
       suppressHydrationWarning
     >
       <body className="flex min-h-full bg-white dark:bg-slate-900">

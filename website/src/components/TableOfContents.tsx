@@ -1,55 +1,89 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import clsx from 'clsx'
 
 import { type Section, type Subsection } from '@/lib/sections'
+
+function getSectionIds(tableOfContents: Array<Section>) {
+  return tableOfContents.flatMap((section) => [
+    section.id,
+    ...section.children.map((child) => child.id),
+  ])
+}
 
 export function TableOfContents({
   tableOfContents,
 }: {
   tableOfContents: Array<Section>
 }) {
-  let [currentSection, setCurrentSection] = useState(tableOfContents[0]?.id)
-
-  let getHeadings = useCallback((tableOfContents: Array<Section>) => {
-    return tableOfContents
-      .flatMap((node) => [node.id, ...node.children.map((child) => child.id)])
-      .map((id) => {
-        let el = document.getElementById(id)
-        if (!el) return null
-
-        let style = window.getComputedStyle(el)
-        let scrollMt = parseFloat(style.scrollMarginTop)
-
-        let top = window.scrollY + el.getBoundingClientRect().top - scrollMt
-        return { id, top }
-      })
-      .filter((x): x is { id: string; top: number } => x !== null)
-  }, [])
+  let sectionIds = useMemo(
+    () => getSectionIds(tableOfContents),
+    [tableOfContents],
+  )
+  let [currentSection, setCurrentSection] = useState(sectionIds[0])
 
   useEffect(() => {
-    if (tableOfContents.length === 0) return
-    let headings = getHeadings(tableOfContents)
-    function onScroll() {
-      let top = window.scrollY
+    if (sectionIds.length === 0) {
+      return
+    }
+
+    let headings = sectionIds
+      .map((id) => document.getElementById(id))
+      .filter((heading): heading is HTMLElement => heading !== null)
+
+    if (headings.length === 0) {
+      return
+    }
+
+    let frameId = 0
+
+    function updateCurrentSection() {
+      frameId = 0
+
       let current = headings[0].id
+      let viewportTop = window.innerHeight * 0.25
+
       for (let heading of headings) {
-        if (top >= heading.top - 10) {
+        if (heading.getBoundingClientRect().top <= viewportTop) {
           current = heading.id
         } else {
           break
         }
       }
+
       setCurrentSection(current)
     }
-    window.addEventListener('scroll', onScroll, { passive: true })
-    onScroll()
-    return () => {
-      window.removeEventListener('scroll', onScroll)
+
+    function scheduleUpdate() {
+      if (frameId === 0) {
+        frameId = window.requestAnimationFrame(updateCurrentSection)
+      }
     }
-  }, [getHeadings, tableOfContents])
+
+    let observer = new IntersectionObserver(scheduleUpdate, {
+      rootMargin: '-25% 0px -70% 0px',
+    })
+
+    for (let heading of headings) {
+      observer.observe(heading)
+    }
+
+    window.addEventListener('scroll', scheduleUpdate, { passive: true })
+    window.addEventListener('resize', scheduleUpdate)
+    updateCurrentSection()
+
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('scroll', scheduleUpdate)
+      window.removeEventListener('resize', scheduleUpdate)
+
+      if (frameId !== 0) {
+        window.cancelAnimationFrame(frameId)
+      }
+    }
+  }, [sectionIds])
 
   function isActive(section: Section | Subsection) {
     if (section.id === currentSection) {

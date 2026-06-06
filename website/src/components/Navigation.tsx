@@ -4,6 +4,16 @@ import clsx from 'clsx'
 
 import { navigation } from '@/lib/navigation'
 
+function normalizePathname(pathname: string) {
+  let normalized = pathname.replace(/^\/pharos(?=\/|$)/, '') || '/'
+
+  if (normalized !== '/' && normalized.endsWith('/')) {
+    normalized = normalized.slice(0, -1)
+  }
+
+  return normalized
+}
+
 export function Navigation({
   className,
   onLinkClick,
@@ -11,7 +21,7 @@ export function Navigation({
   className?: string
   onLinkClick?: React.MouseEventHandler<HTMLAnchorElement>
 }) {
-  let pathname = usePathname()
+  let pathname = normalizePathname(usePathname())
 
   return (
     <nav className={clsx('text-base lg:text-sm', className)}>
@@ -25,22 +35,27 @@ export function Navigation({
               role="list"
               className="mt-2 space-y-2 border-l-2 border-slate-100 lg:mt-4 lg:space-y-4 lg:border-slate-200 dark:border-slate-800"
             >
-              {section.links.map((link) => (
-                <li key={link.href} className="relative">
-                  <Link
-                    href={link.href}
-                    onClick={onLinkClick}
-                    className={clsx(
-                      'block w-full pl-3.5 before:pointer-events-none before:absolute before:top-1/2 before:-left-1 before:h-1.5 before:w-1.5 before:-translate-y-1/2 before:rounded-full',
-                      link.href === pathname
-                        ? 'font-semibold text-teal-500 before:bg-teal-500'
-                        : 'text-slate-500 before:hidden before:bg-slate-300 hover:text-slate-600 hover:before:block dark:text-slate-400 dark:before:bg-slate-700 dark:hover:text-slate-300',
-                    )}
-                  >
-                    {link.title}
-                  </Link>
-                </li>
-              ))}
+              {section.links.map((link) => {
+                let isActive = normalizePathname(link.href) === pathname
+
+                return (
+                  <li key={link.href} className="relative">
+                    <Link
+                      href={link.href}
+                      onClick={onLinkClick}
+                      aria-current={isActive ? 'page' : undefined}
+                      className={clsx(
+                        'relative block w-full rounded-r-md py-1.5 pr-3 pl-4 transition before:pointer-events-none before:absolute before:inset-y-1 before:-left-px before:w-0.5 before:rounded-r-full',
+                        isActive
+                          ? 'bg-teal-50 font-semibold text-teal-700 before:bg-teal-500 dark:bg-teal-400/10 dark:text-teal-300 dark:before:bg-teal-300'
+                          : 'text-slate-500 before:bg-transparent hover:bg-slate-100/70 hover:text-slate-700 hover:before:bg-slate-300 dark:text-slate-400 dark:hover:bg-slate-800/70 dark:hover:text-slate-200 dark:hover:before:bg-slate-600',
+                      )}
+                    >
+                      {link.title}
+                    </Link>
+                  </li>
+                )
+              })}
             </ul>
           </li>
         ))}

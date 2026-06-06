@@ -8,6 +8,8 @@ binaries/
 # npm pack
 *.tgz
 
-# Astro website
+# Website build output
 website/.astro/
 website/dist/
+website/.next/
+website/out/
