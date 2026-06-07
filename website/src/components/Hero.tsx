@@ -1,5 +1,6 @@
 import Image from 'next/image'
 
+import { AnimatedPharosOutput } from '@/components/AnimatedPharosOutput'
 import { Button } from '@/components/Button'
 import pharosHero from '@/images/pharos-hero.svg'
 
@@ -23,11 +24,26 @@ export function Hero() {
               Why is that vulnerable package in your lockfile?
             </h1>
             <p className="mt-5 max-w-xl text-lg leading-relaxed text-slate-300 md:mx-auto lg:mx-0">
-              Pharos walks <code className="rounded bg-slate-800 px-1.5 py-0.5 text-base text-slate-200">yarn.lock</code> or <code className="rounded bg-slate-800 px-1.5 py-0.5 text-base text-slate-200">package-lock.json</code> upward from a known vulnerable <code className="rounded bg-slate-800 px-1.5 py-0.5 text-base text-slate-200">package@version</code> and tells you which top-level dependency owns the fix.
+              Pharos walks{' '}
+              <code className="rounded bg-slate-800 px-1.5 py-0.5 text-base text-slate-200">
+                yarn.lock
+              </code>{' '}
+              or{' '}
+              <code className="rounded bg-slate-800 px-1.5 py-0.5 text-base text-slate-200">
+                package-lock.json
+              </code>{' '}
+              upward from a known vulnerable{' '}
+              <code className="rounded bg-slate-800 px-1.5 py-0.5 text-base text-slate-200">
+                package@version
+              </code>{' '}
+              and tells you which top-level dependency owns the fix.
             </p>
             <div className="mt-8 flex gap-4 md:justify-center lg:justify-start">
               <Button href="#run-without-installing">Get started</Button>
-              <Button href="https://github.com/vaskort/pharos" variant="secondary">
+              <Button
+                href="https://github.com/vaskort/pharos"
+                variant="secondary"
+              >
                 View on GitHub
               </Button>
             </div>
@@ -43,25 +59,7 @@ export function Hero() {
               <div className="px-4 pt-4">
                 <TrafficLightsIcon className="h-2.5 w-auto stroke-slate-500/40" />
               </div>
-              <pre className="overflow-x-auto px-5 pt-3 pb-5 font-mono text-[13px] leading-6 text-slate-200">
-{`$ npx pharos-cli@latest qs@6.13.0 --path ./my-app
-
-  ./package-lock.json
-  Found qs@6.13.0
-
-  Owner: express, requested as ^4.18.0
-
-  Chain
-    qs@6.13.0
-      -> body-parser@1.20.3
-      -> express@4.21.2
-
-  Fix path
-    body-parser >= 1.20.4
-    express    >= 5.0.0
-    `}
-                <span className="text-amber-300">→ Recommended: update express to {`>= 5.0.0`}</span>
-              </pre>
+              <AnimatedPharosOutput />
             </div>
           </div>
         </div>
