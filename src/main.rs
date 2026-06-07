@@ -4,7 +4,7 @@ mod registry;
 mod search;
 mod utils;
 
-use clap::Parser;
+use clap::{Parser, error::ErrorKind};
 use colored::Colorize;
 use lockfile::{find_lockfiles, parse_dependency_entries, parse_lockfile};
 use manifest::{ManifestDependency, read_package_json_dependencies};
@@ -21,9 +21,17 @@ use crate::{
 };
 
 #[derive(Parser)]
-#[command(author, version, about)]
+#[command(
+    name = "pharos-cli",
+    bin_name = "pharos-cli",
+    author,
+    version,
+    about,
+    after_help = "Examples:\n  pharos-cli qs@6.13.0 --path .\n  pharos-cli qs@6.13.0 --recursive --json"
+)]
 struct Cli {
     /// Package to search for in the format name@version (e.g. qs@6.13.0)
+    #[arg(value_name = "PACKAGE@VERSION")]
     package: String,
 
     /// Path to the project root
@@ -487,14 +495,30 @@ fn print_lockfile_report(report: &LockfileReport, package_name: &str, package_ve
 }
 
 fn main() {
-    let cli = Cli::parse();
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(err) if err.kind() == ErrorKind::MissingRequiredArgument => {
+            eprintln!("error: missing package to analyze");
+            eprintln!();
+            eprintln!("Usage: pharos-cli <PACKAGE@VERSION> [OPTIONS]");
+            eprintln!();
+            eprintln!("Example:");
+            eprintln!("  pharos-cli qs@6.13.0 --path .");
+            eprintln!();
+            eprintln!("For more information, try 'pharos-cli --help'.");
+            std::process::exit(2);
+        }
+        Err(err) => err.exit(),
+    };
 
     let spec = match parse_package(&cli.package) {
         Ok(spec) => spec,
         Err(e) => {
             match e {
                 ParseError::Empty => eprintln!("No package provided."),
-                ParseError::MissingVersion => eprintln!("Missing version. Use: pharos pkg@1.2.3"),
+                ParseError::MissingVersion => {
+                    eprintln!("Missing version. Use: pharos-cli pkg@1.2.3")
+                }
                 ParseError::InvalidVersion(v) => eprintln!(
                     "Invalid version '{}'. Please provide an exact semver version (e.g. 1.2.3)",
                     v

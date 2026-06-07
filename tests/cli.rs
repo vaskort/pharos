@@ -31,6 +31,32 @@ fn write_yarn_lock(dir: &Path, content: &str) {
 }
 
 #[test]
+fn help_uses_user_facing_command_name() {
+    let output = run_pharos(&["--help"]);
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Usage: pharos-cli [OPTIONS] <PACKAGE@VERSION>"));
+    assert!(stdout.contains("Examples:"));
+    assert!(stdout.contains("pharos-cli qs@6.13.0 --path ."));
+}
+
+#[test]
+fn missing_package_error_uses_user_facing_command_name() {
+    let output = run_pharos(&[]);
+
+    assert!(!output.status.success());
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("error: missing package to analyze"));
+    assert!(stderr.contains("Usage: pharos-cli <PACKAGE@VERSION> [OPTIONS]"));
+    assert!(stderr.contains("Example:"));
+    assert!(stderr.contains("pharos-cli qs@6.13.0 --path ."));
+    assert!(stderr.contains("For more information, try 'pharos-cli --help'."));
+}
+
+#[test]
 fn exits_with_error_when_package_version_is_missing() {
     let output = run_pharos(&["pkg-a"]);
 
@@ -38,7 +64,7 @@ fn exits_with_error_when_package_version_is_missing() {
     assert_eq!(output.status.code(), Some(1));
 
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("Missing version"));
+    assert!(stderr.contains("Missing version. Use: pharos-cli pkg@1.2.3"));
 }
 
 #[test]
