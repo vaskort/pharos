@@ -5,6 +5,8 @@
 [![Docs](https://img.shields.io/badge/docs-pharos-00846a.svg)](https://pharos-cli.io/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
+![Pharos tracing a vulnerable qs version back to the packages that own the fix](https://raw.githubusercontent.com/vaskort/pharos/main/.github/pharos-demo.gif)
+
 Pharos explains why a known vulnerable JavaScript package version is present in your lockfile.
 
 Give Pharos an exact `package@version` from `yarn audit`, `npm audit`, Dependabot, Snyk, a CVE report, or the vulnerability scanner you already use. It scans your `yarn.lock` or `package-lock.json`, traces the dependency chain that introduced that version, and suggests candidate parent package upgrades.
