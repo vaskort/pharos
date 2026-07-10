@@ -1,0 +1,35 @@
+\033[2m════════════════════════════════════════════════════════════\033[0m
+\033[1;36m📁 ./tests/e2e/package-lock.json\033[0m
+\033[2m════════════════════════════════════════════════════════════\033[0m
+\033[2m  Package qs@6.15.0 not found\033[0m
+
+\033[2m════════════════════════════════════════════════════════════\033[0m
+\033[1;36m📁 ./web-client/package-lock.json\033[0m
+\033[2m════════════════════════════════════════════════════════════\033[0m
+\033[1;32m  ✓ Found qs@6.15.0\033[0m
+
+\033[1m Owner:\033[0m
+  karma from devDependencies, requested as ^6.4.4
+
+\033[1m  ── Chain 1 ──\033[0m
+  qs@6.15.0 \033[2m(requested as 6.13.0)\033[0m
+    -> body-parser@1.20.3 \033[2m(requested as ^1.19.0)\033[0m
+    -> karma@6.4.4
+\033[33m  ⚠ No karma version found that updates body-parser beyond 1.20.5\033[0m
+
+\033[1m Fix path:\033[0m
+  body-parser >= 1.20.5
+\033[1;32m  → Recommended: Update body-parser to >= 1.20.5\033[0m
+
+\033[1m Owner:\033[0m
+  express from dependencies, requested as ^4.22.1
+
+\033[1m  ── Chain 2 ──\033[0m
+  qs@6.15.0 \033[2m(requested as ~6.14.0)\033[0m
+    -> body-parser@1.20.4 \033[2m(requested as ~1.20.3)\033[0m
+    -> express@4.22.1
+
+\033[1m Fix path:\033[0m
+  body-parser >= 1.20.5
+  express >= 5.0.0
+\033[1;32m  → Recommended: Update express to >= 5.0.0\033[0m
