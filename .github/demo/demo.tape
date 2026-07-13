@@ -7,12 +7,12 @@
 Output ../pharos-demo.gif
 
 Set Shell "bash"
-Set FontSize 15
-Set Width 920
-Set Height 780
+Set FontSize 30
+Set Width 1840
+Set Height 1460
 Set Theme "Catppuccin Mocha"
 Set TypingSpeed 40ms
-Set Padding 16
+Set Padding 32
 
 Hide
 Type "source ./demo-setup.sh && clear"
