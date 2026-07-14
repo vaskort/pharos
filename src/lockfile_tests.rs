@@ -63,16 +63,22 @@ mod parse_dependency_entries {
     fn parses_yarn_entries_to_normalized_entries() {
         let content = fs::read_to_string("testdata/simple_chain.lock").unwrap();
 
-        let entries = parse_dependency_entries(&LockFileType::Yarn, &content).unwrap();
+        let graph = parse_dependency_entries(&LockFileType::Yarn, &content).unwrap();
 
-        let pkg_a = entries.iter().find(|entry| entry.name == "pkg-a").unwrap();
+        let pkg_a = graph
+            .nodes
+            .iter()
+            .find(|entry| entry.name == "pkg-a")
+            .unwrap();
         assert_eq!(pkg_a.version, "1.0.0");
-        assert_eq!(pkg_a.descriptors[0].name, "pkg-a");
-        assert_eq!(pkg_a.descriptors[0].requested_as, "^1.0.0");
-        assert_eq!(pkg_a.dependencies[0].name, "pkg-b");
+        assert_eq!(pkg_a.locator, "pkg-a@^1.0.0");
         assert_eq!(pkg_a.dependencies[0].requested_as, "^2.0.0");
 
-        let pkg_b = entries.iter().find(|entry| entry.name == "pkg-b").unwrap();
+        let pkg_b = graph
+            .nodes
+            .iter()
+            .find(|entry| entry.name == "pkg-b")
+            .unwrap();
         assert_eq!(pkg_b.version, "2.0.0");
         assert!(pkg_b.dependencies.is_empty());
     }
@@ -104,14 +110,38 @@ mod parse_dependency_entries {
             }
         }"#;
 
-        let entries = parse_dependency_entries(&LockFileType::Npm, content).unwrap();
+        let graph = parse_dependency_entries(&LockFileType::Npm, content).unwrap();
 
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].name, "pkg-a");
-        assert_eq!(entries[0].version, "1.0.0");
-        assert_eq!(entries[0].descriptors[0].name, "pkg-a");
-        assert_eq!(entries[0].descriptors[0].requested_as, "^1.0.0");
-        assert!(entries[0].dependencies.is_empty());
+        assert_eq!(graph.nodes.len(), 1);
+        assert_eq!(graph.nodes[0].name, "pkg-a");
+        assert_eq!(graph.nodes[0].version, "1.0.0");
+        assert_eq!(graph.nodes[0].locator, "node_modules/pkg-a");
+        assert!(graph.nodes[0].dependencies.is_empty());
+    }
+
+    #[test]
+    fn includes_optional_dependencies_as_graph_edges() {
+        let content = r#"{
+            "lockfileVersion": 3,
+            "packages": {
+                "": { "dependencies": { "parent": "1.0.0" } },
+                "node_modules/parent": {
+                    "version": "1.0.0",
+                    "optionalDependencies": { "optional-child": "^2.0.0" }
+                },
+                "node_modules/optional-child": { "version": "2.0.0" }
+            }
+        }"#;
+
+        let graph = parse_dependency_entries(&LockFileType::Npm, content).unwrap();
+        let parent = graph
+            .nodes
+            .iter()
+            .find(|node| node.name == "parent")
+            .unwrap();
+
+        assert_eq!(parent.dependencies.len(), 1);
+        assert_eq!(parent.dependencies[0].kind, DependencyKind::Optional);
     }
 }
 

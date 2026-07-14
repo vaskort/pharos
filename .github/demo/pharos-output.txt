@@ -17,9 +17,9 @@
     -> karma@6.4.4
 \033[33m  ⚠ No karma version found that updates body-parser beyond 1.20.5\033[0m
 
-\033[1m Fix path:\033[0m
+\033[1m Candidate path (not verified; pass --fixed to verify):\033[0m
   body-parser >= 1.20.5
-\033[1;32m  → Recommended: Update body-parser to >= 1.20.5\033[0m
+\033[1;32m  → candidate: Update body-parser to >= 1.20.5\033[0m
 
 \033[1m Owner:\033[0m
   express from dependencies, requested as ^4.22.1
@@ -29,7 +29,7 @@
     -> body-parser@1.20.4 \033[2m(requested as ~1.20.3)\033[0m
     -> express@4.22.1
 
-\033[1m Fix path:\033[0m
+\033[1m Candidate path (not verified; pass --fixed to verify):\033[0m
   body-parser >= 1.20.5
   express >= 5.0.0
-\033[1;32m  → Recommended: Update express to >= 5.0.0\033[0m
+\033[1;32m  → candidate: Update express to >= 5.0.0\033[0m

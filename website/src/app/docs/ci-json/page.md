@@ -12,9 +12,11 @@ The top-level report includes the target package and a list of lockfile results:
 
 ```json
 {
+  "schema_version": 1,
   "package": {
     "name": "qs",
-    "version": "6.13.0"
+    "version": "6.13.0",
+    "fixed_range": ">=6.14.0"
   },
   "lockfiles": [
     {
@@ -36,6 +38,8 @@ The top-level report includes the target package and a list of lockfile results:
 - `error` when the lockfile could not be parsed or analyzed.
 
 Parse errors include an `error` string on the lockfile object.
+
+Each found chain includes a stable target `locator` and a `remediation` object. Remediation `status` is `semver_verified`, `candidate`, or `unavailable`; `primary_action` and `alternatives` contain printable instructions. Existing `fix_path` and `recommended` fields remain available for compatibility.
 
 ## CI usage
 

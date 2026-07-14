@@ -19,6 +19,8 @@ The package spec must include an exact version.
 | `-p, --path <PATH>` | Directory to search. Defaults to the current directory. |
 | `-r, --recursive` | Search subdirectories for additional lockfiles. |
 | `--json` | Print a machine-readable JSON report instead of human-readable text. |
+| `--fixed <VERSION_OR_RANGE>` | Verify remediation against a minimum fixed version or complete safe range. |
+| `--no-registry` | Skip npm registry requests and print dependency chains only. |
 
 ## Examples
 
@@ -44,4 +46,18 @@ Emit JSON:
 
 ```bash
 pharos qs@6.13.0 --path ./my-app --json
+```
+
+Verify every proposed dependency range excludes the vulnerable release:
+
+```bash
+pharos qs@6.13.0 --fixed ">=6.14.0 <7"
+```
+
+An exact value such as `--fixed 6.14.0` is normalized to `>=6.14.0`.
+
+Trace chains without registry remediation:
+
+```bash
+pharos qs@6.13.0 --no-registry
 ```

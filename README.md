@@ -21,6 +21,8 @@ Documentation: https://pharos-cli.io/
 - Shows the chain of packages that brought that version into the project
 - Prints both resolved versions and the parent-requested version ranges
 - Suggests candidate parent upgrades using public npm registry metadata
+- Verifies remediation paths against an exact fixed version or safe semver range
+- Prints exact manifest or override instructions without modifying project files
 - Scans one project or multiple nested projects with `--recursive`
 
 ## When To Use It
@@ -80,6 +82,12 @@ pharos semver@7.0.0 --path ~/projects --recursive
 
 # Print machine-readable output for CI or downstream tooling
 pharos qs@6.13.0 --path ./my-app --json
+
+# Prove that the proposed path only permits fixed releases
+pharos qs@6.13.0 --fixed ">=6.14.0 <7"
+
+# Trace chains without contacting the npm registry
+pharos qs@6.13.0 --no-registry
 ```
 
 ### Options
@@ -87,6 +95,8 @@ pharos qs@6.13.0 --path ./my-app --json
 - `-p, --path <PATH>` - Directory to search (default: current directory)
 - `-r, --recursive` - Search subdirectories for additional lockfiles
 - `--json` - Print machine-readable JSON instead of human-readable text
+- `--fixed <VERSION_OR_RANGE>` - Verify remediation against a minimum fixed version or complete safe range
+- `--no-registry` - Skip registry lookups and print dependency chains only
 
 ## Supported Lockfiles
 
@@ -111,10 +121,12 @@ When a directory contains more than one supported lockfile, Pharos checks each o
     -> body-parser@1.20.3 (requested as 1.20.3)
     -> express@4.21.2
 
- Fix path:
+ Verified remediation:
   body-parser >= 1.20.4
   express >= 5.0.0
-  → Recommended: Update express to >= 5.0.0
+  → semver verified: express 4.21.2 → 5.0.0
+    Change package.json dependencies.express from "^4.18.0" to "^5.0.0"
+    Run npm install
 ```
 
 In each chain:
@@ -122,7 +134,8 @@ In each chain:
 - `package@version` is the resolved package version in the lockfile
 - `requested as` is the version range requested by the parent package
 - `Owner` is the top-level package declaration from the sibling `package.json`, when available
-- `Recommended` is the highest parent in the discovered fix path
+- `semver verified` means every dependency range in the proposed path is contained in the supplied safe range
+- Without `--fixed`, registry suggestions are labeled as unverified candidates
 
 ## JSON Output
 
@@ -130,9 +143,11 @@ Use `--json` when another tool needs to consume Pharos output.
 
 ```json
 {
+  "schema_version": 1,
   "package": {
     "name": "pkg-a",
-    "version": "1.0.0"
+    "version": "1.0.0",
+    "fixed_range": ">=1.0.1"
   },
   "lockfiles": [
     {
@@ -141,14 +156,39 @@ Use `--json` when another tool needs to consume Pharos output.
       "status": "found",
       "chains": [
         {
+          "target_locator": "pkg-a@1.0.0",
           "links": [],
           "owner": {
             "name": "pkg-a",
             "dependency_type": "dependencies",
-            "requested_as": "^1.0.0"
+            "requested_as": "1.0.0"
           },
-          "fix_path": [],
-          "recommended": null,
+          "fix_path": [{
+            "package": "pkg-a",
+            "minimum_version": "1.0.1"
+          }],
+          "recommended": {
+            "package": "pkg-a",
+            "minimum_version": "1.0.1"
+          },
+          "remediation": {
+            "status": "semver_verified",
+            "primary_action": {
+              "kind": "direct_update",
+              "verification": "semver_verified",
+              "package": "pkg-a",
+              "current_version": "1.0.0",
+              "target_version": "1.0.1",
+              "manifest_section": "dependencies",
+              "requested_as": "1.0.1",
+              "instructions": [
+                "Change package.json dependencies.pkg-a from \"1.0.0\" to \"1.0.1\"",
+                "Run yarn install",
+                "Rerun pharos pkg-a@1.0.0 --fixed '1.0.1'"
+              ]
+            },
+            "alternatives": []
+          },
           "warnings": []
         }
       ]
@@ -166,6 +206,7 @@ When a sibling `package.json` exists, `owner` identifies the top-level declarati
 - Package ownership is inferred from a `package.json` in the same directory as the lockfile; workspace ownership is not resolved yet
 - Fix suggestions rely on the public npm registry; private packages in the chain may not have upgrade recommendations
 - Candidate upgrades are suggestions based on package metadata; review and test the resulting dependency changes in your project
+- `semver_verified` proves range containment, not application compatibility or a successful install
 
 ## License
 

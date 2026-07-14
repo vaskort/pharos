@@ -16,10 +16,12 @@ Chain 1
     -> body-parser@1.20.3 (requested as 1.20.3)
     -> express@4.21.2
 
-Fix path:
+Verified remediation:
   body-parser >= 1.20.4
   express >= 5.0.0
-  Recommended: Update express to >= 5.0.0
+  semver verified: express 4.21.2 → 5.0.0
+  Change package.json dependencies.express from "^4.18.0" to "^5.0.0"
+  Run npm install
 ```
 
 ## Chain entries
@@ -36,8 +38,10 @@ For direct dependencies, the owner is the target package itself when it is decla
 
 For transitive dependencies, the owner is the top package in the chain when it is declared in `package.json`.
 
-## Fix path
+## Remediation
 
-The fix path lists parent package versions that appear to request a newer target dependency version.
+With `--fixed`, Pharos only labels a path `semver verified` when each proposed dependency range is wholly contained in the supplied safe range. This proves the version constraints, but you must still install and test the result.
 
-The recommended upgrade is the highest package in the discovered chain with a candidate upgrade. Treat it as a starting point: update the package, refresh the lockfile, and run your test suite.
+Without `--fixed`, Pharos labels registry results as candidates. A candidate excludes the exact installed version but may still permit another affected version.
+
+When no owner upgrade can be verified, Pharos prints an npm `overrides` or Yarn `resolutions` fallback. These instructions are advisory; Pharos never edits project files or runs package-manager commands.

@@ -1,19 +1,20 @@
 mod lockfile;
 mod manifest;
 mod registry;
+mod remediation;
 mod search;
-mod utils;
 
 use clap::{Parser, error::ErrorKind};
 use colored::Colorize;
 use lockfile::{find_lockfiles, parse_dependency_entries, parse_lockfile};
 use manifest::{ManifestDependency, read_package_json_dependencies};
-use search::{ChainLink, find_dependency_chains, package_exists};
-use semver::Version;
+use remediation::{
+    DependencyOwner, FixStep, PackageManager, RemediationPlan, RemediationStatus, SafeRange,
+    build_remediation,
+};
+use search::{ChainLink, DependencyChain, find_dependency_chains, package_exists};
 use serde::Serialize;
-use std::collections::HashMap;
 use std::path::Path;
-use utils::clean_version;
 
 use crate::{
     lockfile::LockFileType,
@@ -45,6 +46,14 @@ struct Cli {
     /// Print machine-readable JSON output
     #[arg(long)]
     json: bool,
+
+    /// Minimum fixed version or complete safe semver range
+    #[arg(long, value_name = "VERSION_OR_RANGE")]
+    fixed: Option<String>,
+
+    /// Skip npm registry lookups and print dependency chains only
+    #[arg(long)]
+    no_registry: bool,
 }
 
 #[derive(Debug, PartialEq)]
@@ -62,6 +71,7 @@ enum ParseError {
 
 #[derive(Debug, Serialize)]
 struct Report {
+    schema_version: u8,
     package: ReportPackage,
     lockfiles: Vec<LockfileReport>,
 }
@@ -70,6 +80,8 @@ struct Report {
 struct ReportPackage {
     name: String,
     version: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fixed_range: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -92,18 +104,13 @@ enum LockfileStatus {
 
 #[derive(Debug, Serialize)]
 struct ChainReport {
+    target_locator: String,
     links: Vec<ChainLinkReport>,
     owner: Option<DependencyOwner>,
     fix_path: Vec<FixStep>,
     recommended: Option<FixStep>,
+    remediation: RemediationPlan,
     warnings: Vec<String>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-struct DependencyOwner {
-    name: String,
-    dependency_type: String,
-    requested_as: String,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -112,17 +119,20 @@ struct ChainOwnerGroup {
     chain_indexes: Vec<usize>,
 }
 
+struct RemediationRequest<'a> {
+    package_name: &'a str,
+    package_version: &'a str,
+    safe_range: Option<&'a SafeRange>,
+    package_manager: PackageManager,
+    no_registry: bool,
+}
+
 #[derive(Clone, Debug, Serialize)]
 struct ChainLinkReport {
     name: String,
     version: String,
+    locator: String,
     requested_as: String,
-}
-
-#[derive(Clone, Debug, Serialize)]
-struct FixStep {
-    package: String,
-    minimum_version: String,
 }
 
 fn format_chain(chain: &[ChainLinkReport], package_name: &str, package_version: &str) {
@@ -178,49 +188,6 @@ fn parse_package<'a>(input: &'a str) -> Result<PackageSpec<'a>, ParseError> {
     }
 }
 
-fn show_parent_updates(
-    registry_cache: &RegistryCache,
-    package_name: &str,
-    package_version: &str,
-    parent: &str,
-) -> Option<String> {
-    let package_version = Version::parse(package_version).ok()?;
-
-    registry_cache.get(parent).and_then(|parent_data| {
-        let mut versions = parent_data
-            .versions
-            .keys()
-            .map(|version| (version, Version::parse(version).ok()))
-            .collect::<Vec<_>>();
-        versions.sort_by(|(a, parsed_a), (b, parsed_b)| match (parsed_a, parsed_b) {
-            (Some(v_a), Some(v_b)) => v_a.cmp(v_b),
-            (Some(_), None) => std::cmp::Ordering::Less,
-            (None, Some(_)) => std::cmp::Ordering::Greater,
-            (None, None) => a.cmp(b),
-        });
-
-        for (version, parsed_version) in versions {
-            if parsed_version.is_some_and(|version| !version.pre.is_empty()) {
-                continue;
-            }
-
-            if let Some(version_info) = parent_data.versions.get(version)
-                && let Some(deps) = &version_info.dependencies
-                && let Some(dep_version) = deps.get(package_name)
-            {
-                let clean_version = clean_version(dep_version);
-                if let Ok(dep_version) = Version::parse(clean_version)
-                    && dep_version > package_version
-                {
-                    return Some(version.to_string());
-                }
-            }
-        }
-
-        None
-    })
-}
-
 fn lockfile_type_name(lockfile_type: &LockFileType) -> String {
     match lockfile_type {
         LockFileType::Yarn => "yarn".to_string(),
@@ -228,53 +195,82 @@ fn lockfile_type_name(lockfile_type: &LockFileType) -> String {
     }
 }
 
+fn package_manager(lockfile_type: &LockFileType, content: &str) -> PackageManager {
+    match lockfile_type {
+        LockFileType::Npm => PackageManager::Npm,
+        LockFileType::Yarn
+            if content
+                .lines()
+                .any(|line| line.contains("yarn lockfile v1")) =>
+        {
+            PackageManager::YarnClassic
+        }
+        LockFileType::Yarn => PackageManager::YarnModern,
+    }
+}
+
 fn report_chain(
-    chain: &[ChainLink],
-    package_name: &str,
-    package_version: &str,
+    chain: &DependencyChain,
     registry_cache: &RegistryCache,
     manifest_dependencies: &[ManifestDependency],
+    request: &RemediationRequest<'_>,
 ) -> ChainReport {
-    let mut chain_package_name: String = package_name.to_string();
-    let mut chain_package_version: String = package_version.to_string();
-    let mut fix_path: Vec<FixStep> = Vec::new();
-    let mut warnings: Vec<String> = Vec::new();
-
-    for chain_link in chain {
-        if let Some(min_updated_version) = show_parent_updates(
+    let owner = find_chain_owner(&chain.links, request.package_name, manifest_dependencies);
+    let remediation = if request.no_registry {
+        RemediationPlan {
+            status: RemediationStatus::Unavailable,
+            primary_action: None,
+            alternatives: Vec::new(),
+            fix_path: Vec::new(),
+            warnings: vec!["Registry lookups disabled by --no-registry".to_string()],
+        }
+    } else {
+        build_remediation(
+            chain,
+            request.package_name,
+            request.package_version,
+            request.safe_range,
+            owner.as_ref(),
+            request.package_manager,
             registry_cache,
-            &chain_package_name,
-            &chain_package_version,
-            &chain_link.name,
-        ) {
-            fix_path.push(FixStep {
-                package: chain_link.name.clone(),
-                minimum_version: min_updated_version.clone(),
-            });
-            chain_package_name = chain_link.name.clone();
-            chain_package_version = min_updated_version;
-        } else {
-            warnings.push(format!(
-                "No {} version found that updates {} beyond {}",
-                chain_link.name, chain_package_name, chain_package_version
-            ));
-
-            break;
+        )
+    };
+    let fix_path = remediation.fix_path.clone();
+    let recommended = fix_path.last().cloned();
+    let mut warnings = chain.warnings.clone();
+    warnings.extend(remediation.warnings.clone());
+    let mut registry_packages = chain
+        .links
+        .iter()
+        .map(|link| link.name.as_str())
+        .collect::<Vec<_>>();
+    if request.safe_range.is_some() {
+        registry_packages.push(request.package_name);
+    }
+    registry_packages.sort_unstable();
+    registry_packages.dedup();
+    for package in registry_packages {
+        if let Some(error) = registry_cache.error(package) {
+            warnings.push(format!("Registry lookup failed for {}: {}", package, error));
         }
     }
 
     ChainReport {
+        target_locator: chain.target_locator.clone(),
         links: chain
+            .links
             .iter()
             .map(|chain_link| ChainLinkReport {
                 name: chain_link.name.clone(),
                 version: chain_link.version.clone(),
+                locator: chain_link.locator.clone(),
                 requested_as: chain_link.requested_as.clone(),
             })
             .collect(),
-        owner: find_chain_owner(chain, package_name, manifest_dependencies),
-        recommended: fix_path.last().cloned(),
+        owner,
+        recommended,
         fix_path,
+        remediation,
         warnings,
     }
 }
@@ -344,6 +340,8 @@ fn analyze_lockfile(
     path: &Path,
     package_name: &str,
     package_version: &str,
+    safe_range: Option<&SafeRange>,
+    no_registry: bool,
     registry_cache: &mut RegistryCache,
 ) -> LockfileReport {
     let path_display = path.display().to_string();
@@ -361,8 +359,8 @@ fn analyze_lockfile(
             };
         }
     };
-    let entries = match parse_dependency_entries(lockfile_type, &lockfile_content) {
-        Ok(entries) => entries,
+    let graph = match parse_dependency_entries(lockfile_type, &lockfile_content) {
+        Ok(graph) => graph,
         Err(err) => {
             return LockfileReport {
                 path: path_display,
@@ -378,7 +376,7 @@ fn analyze_lockfile(
         }
     };
 
-    if !package_exists(&entries, package_name, package_version) {
+    if !package_exists(&graph, package_name, package_version) {
         return LockfileReport {
             path: path_display,
             lockfile_type: lockfile_type_name,
@@ -388,18 +386,28 @@ fn analyze_lockfile(
         };
     }
 
-    let chains = find_dependency_chains(&entries, package_name, package_version);
-    find_parent_versions(&chains, registry_cache);
+    let chains = find_dependency_chains(&graph, package_name, package_version);
+    if !no_registry {
+        let additional_packages = safe_range.map(|_| vec![package_name]).unwrap_or_default();
+        find_parent_versions(&chains, &additional_packages, registry_cache);
+    }
     let (manifest_dependencies, manifest_warning) = manifest_dependencies_for_lockfile(path);
+    let package_manager = package_manager(lockfile_type, &lockfile_content);
+    let remediation_request = RemediationRequest {
+        package_name,
+        package_version,
+        safe_range,
+        package_manager,
+        no_registry,
+    };
     let chains = chains
         .iter()
         .map(|chain| {
             let mut report = report_chain(
                 chain,
-                package_name,
-                package_version,
                 registry_cache,
                 &manifest_dependencies,
+                &remediation_request,
             );
             if let Some(warning) = &manifest_warning {
                 report.warnings.push(warning.clone());
@@ -465,6 +473,7 @@ fn print_lockfile_report(report: &LockfileReport, package_name: &str, package_ve
         for chain_index in group.chain_indexes {
             let chain = &report.chains[chain_index];
             println!("\n  {}", format!("── Chain {} ──", chain_index + 1).cyan());
+            println!("  Locator: {}", chain.target_locator);
             print!("  ");
             format_chain(&chain.links, package_name, package_version);
 
@@ -472,23 +481,50 @@ fn print_lockfile_report(report: &LockfileReport, package_name: &str, package_ve
                 println!("  {}", format!("⚠ {}", warning).yellow());
             }
 
-            if let Some(recommended) = &chain.recommended {
-                println!("\n Fix path:");
+            if !chain.fix_path.is_empty() {
+                let heading = match chain.remediation.status {
+                    RemediationStatus::SemverVerified => "Verified remediation:",
+                    RemediationStatus::Candidate => {
+                        "Candidate path (not verified; pass --fixed to verify):"
+                    }
+                    RemediationStatus::Unavailable => "Remediation unavailable:",
+                };
+                println!("\n {}", heading);
                 for step in &chain.fix_path {
                     println!("  {} >= {}", step.package, step.minimum_version);
                 }
+            }
 
+            if let Some(action) = &chain.remediation.primary_action {
                 println!(
                     "  {}",
                     format!(
-                        "→ Recommended: Update {} to >= {}",
-                        recommended.package, recommended.minimum_version
+                        "→ {}: {} {} → {}",
+                        action.verification.label(),
+                        action.package,
+                        action.current_version.as_deref().unwrap_or("unknown"),
+                        action.target_version
                     )
                     .green()
                     .bold()
                 );
-            } else {
-                println!("  {}", "✗ No fix available for this chain".red());
+                for instruction in &action.instructions {
+                    println!("    {}", instruction);
+                }
+                for alternative in &chain.remediation.alternatives {
+                    println!(
+                        "  Alternative ({}): {} {} → {}",
+                        alternative.verification.label(),
+                        alternative.kind.label(),
+                        alternative.package,
+                        alternative.target_version
+                    );
+                    for instruction in &alternative.instructions {
+                        println!("    {}", instruction);
+                    }
+                }
+            } else if chain.remediation.status == RemediationStatus::Unavailable {
+                println!("  {}", "✗ No remediation available for this chain".red());
             }
         }
     }
@@ -527,6 +563,16 @@ fn main() {
             std::process::exit(1);
         }
     };
+    let safe_range = match cli.fixed.as_deref() {
+        Some(fixed) => match SafeRange::parse(fixed, spec.version) {
+            Ok(range) => Some(range),
+            Err(err) => {
+                eprintln!("Invalid --fixed value: {}", err);
+                std::process::exit(1);
+            }
+        },
+        None => None,
+    };
 
     let lockfiles = find_lockfiles(&cli.path, cli.recursive);
     if lockfiles.is_empty() {
@@ -535,7 +581,7 @@ fn main() {
     }
 
     if cli.json {
-        let mut registry_cache: RegistryCache = HashMap::new();
+        let mut registry_cache = RegistryCache::default();
         let lockfile_reports: Vec<LockfileReport> = lockfiles
             .iter()
             .map(|(lockfile_type, path)| {
@@ -544,14 +590,20 @@ fn main() {
                     path,
                     spec.name,
                     spec.version,
+                    safe_range.as_ref(),
+                    cli.no_registry,
                     &mut registry_cache,
                 )
             })
             .collect();
         let report = Report {
+            schema_version: 1,
             package: ReportPackage {
                 name: spec.name.to_string(),
                 version: spec.version.to_string(),
+                fixed_range: safe_range
+                    .as_ref()
+                    .map(|range| range.normalized().to_string()),
             },
             lockfiles: lockfile_reports,
         };
@@ -567,13 +619,15 @@ fn main() {
         return;
     }
 
-    let mut registry_cache: RegistryCache = HashMap::new();
+    let mut registry_cache = RegistryCache::default();
     for (lockfile_type, path) in &lockfiles {
         let report = analyze_lockfile(
             lockfile_type,
             path,
             spec.name,
             spec.version,
+            safe_range.as_ref(),
+            cli.no_registry,
             &mut registry_cache,
         );
         print_lockfile_report(&report, spec.name, spec.version);

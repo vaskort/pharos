@@ -1,176 +1,215 @@
-use std::collections::HashMap;
+use std::collections::HashSet;
 
-/// A package reference inside a lockfile.
-///
-/// For dependencies this is the requested range from the parent package.
-/// For descriptors this is the range that resolved to the entry's concrete version.
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct DependencySpec {
-    pub name: String,
-    pub requested_as: String,
+pub type NodeId = usize;
+
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+pub enum DependencyKind {
+    Normal,
+    Optional,
 }
 
-/// A resolved package entry from a lockfile, independent of the lockfile format.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct DependencyEntry {
-    pub name: String,
-    pub version: String,
-    pub descriptors: Vec<DependencySpec>,
-    pub dependencies: Vec<DependencySpec>,
-}
-
-/// A single link in a dependency chain, representing one package
-/// in the path from a direct dependency down to the vulnerable package.
-///
-/// For example, if `pkg-a` depends on `pkg-b` which depends on `pkg-c` (vulnerable),
-/// the chain would be: `[ChainLink(pkg-a), ChainLink(pkg-b)]`.
-#[derive(Clone, Debug)]
-pub struct ChainLink {
-    pub name: String,
-    pub version: String,
-    /// The version range the parent asked for (e.g. "^4.0.0"), not the resolved version.
+pub struct DependencyEdge {
+    pub target: NodeId,
     pub requested_as: String,
+    pub kind: DependencyKind,
 }
 
-/// Checks if a specific package at a specific version exists in the lockfile entries.
-///
-/// # Arguments
-/// * `entries` - The normalized lockfile entries
-/// * `package_name` - The package name to search for
-/// * `package_version` - The exact version to match
-pub fn package_exists(
-    entries: &[DependencyEntry],
-    package_name: &str,
-    package_version: &str,
-) -> bool {
-    for entry in entries.iter() {
-        if entry.name == package_name && entry.version == package_version {
-            return true;
-        }
-    }
-    false
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DependencyNode {
+    pub name: String,
+    pub version: String,
+    pub locator: String,
+    pub dependencies: Vec<DependencyEdge>,
 }
 
-/// Finds all dependency chains that lead to a specific package version.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DependencyGraph {
+    pub nodes: Vec<DependencyNode>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ChainLink {
+    pub node_id: NodeId,
+    pub name: String,
+    pub version: String,
+    pub locator: String,
+    pub requested_as: String,
+    pub dependency_kind: DependencyKind,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DependencyChain {
+    pub target_node_id: NodeId,
+    pub target_locator: String,
+    pub links: Vec<ChainLink>,
+    pub warnings: Vec<String>,
+}
+
+pub fn package_exists(graph: &DependencyGraph, package_name: &str, package_version: &str) -> bool {
+    graph
+        .nodes
+        .iter()
+        .any(|node| node.name == package_name && node.version == package_version)
+}
+
+/// Finds every unique path from every matching target instance to a graph root.
 ///
-/// Starting from the target package, it walks *up* the dependency tree
-/// to find every path from a root dependency down to the target.
-/// Each chain is a `Vec<ChainLink>` representing one such path.
-///
-/// For example, if `pkg-c@1.0.0` is vulnerable and two packages depend on it:
-/// - `pkg-a → pkg-b → pkg-c`
-/// - `pkg-d → pkg-c`
-///
-/// This returns two chains: `[[pkg-a, pkg-b], [pkg-d]]`.
-///
-/// # Arguments
-/// * `entries` - The normalized lockfile entries
-/// * `package_name` - The target package name to trace chains for
-/// * `package_version` - The target package version
-///
-/// # Returns
-/// A `Vec<Vec<ChainLink>>` — e.g. `[[pkg-a, pkg-b], [pkg-d]]`
-/// where each inner vec is one path leading to the target package.
-/// Returns empty if the package is not found.
+/// Lockfile adapters resolve dependencies into explicit node-to-node edges before
+/// search, so packages with identical names, versions, or descriptors remain
+/// distinct when they live at different locators.
 pub fn find_dependency_chains(
-    entries: &[DependencyEntry],
+    graph: &DependencyGraph,
     package_name: &str,
     package_version: &str,
-) -> Vec<Vec<ChainLink>> {
-    struct ParentMatch<'a> {
-        order: usize,
-        entry: &'a DependencyEntry,
-        requested_as: &'a str,
+) -> Vec<DependencyChain> {
+    #[derive(Clone)]
+    struct ParentRef {
+        node_id: NodeId,
+        requested_as: String,
+        dependency_kind: DependencyKind,
     }
 
-    type ParentIndex<'a> = HashMap<&'a DependencySpec, Vec<ParentMatch<'a>>>;
-
-    fn build_parent_index(entries: &[DependencyEntry]) -> ParentIndex<'_> {
-        let dependency_count = entries
-            .iter()
-            .map(|entry| entry.dependencies.len())
-            .sum::<usize>();
-        let mut index = HashMap::with_capacity(dependency_count);
-        let mut order = 0;
-
-        for entry in entries {
-            for dependency in &entry.dependencies {
-                index
-                    .entry(dependency)
-                    .or_insert_with(Vec::new)
-                    .push(ParentMatch {
-                        order,
-                        entry,
-                        requested_as: &dependency.requested_as,
-                    });
-                order += 1;
-            }
-        }
-
-        index
-    }
-
-    fn matching_parents<'a>(
-        parent_index: &'a ParentIndex<'a>,
-        descriptors: &[DependencySpec],
-    ) -> Vec<&'a ParentMatch<'a>> {
-        let mut parents = descriptors
-            .iter()
-            .filter_map(|descriptor| parent_index.get(descriptor))
-            .flatten()
-            .collect::<Vec<_>>();
-
-        parents.sort_by_key(|parent| parent.order);
-        parents
-    }
-
-    fn helper(
-        parent_index: &ParentIndex<'_>,
-        descriptors: &[DependencySpec],
-        current_chain: &mut Vec<ChainLink>,
-        chains: &mut Vec<Vec<ChainLink>>,
+    fn emit_chain(
+        target_node_id: NodeId,
+        graph: &DependencyGraph,
+        current_chain: &[ChainLink],
+        warnings: Vec<String>,
+        seen_chains: &mut HashSet<(NodeId, Vec<NodeId>)>,
+        chains: &mut Vec<DependencyChain>,
     ) {
-        let parents = matching_parents(parent_index, descriptors);
-
-        if parents.is_empty() {
-            chains.push(current_chain.clone());
+        let key = (
+            target_node_id,
+            current_chain.iter().map(|link| link.node_id).collect(),
+        );
+        if !seen_chains.insert(key) {
             return;
         }
 
-        for parent in parents {
-            current_chain.push(ChainLink {
-                name: parent.entry.name.to_string(),
-                version: parent.entry.version.to_string(),
-                requested_as: parent.requested_as.to_string(),
-            });
+        chains.push(DependencyChain {
+            target_node_id,
+            target_locator: graph.nodes[target_node_id].locator.clone(),
+            links: current_chain.to_vec(),
+            warnings,
+        });
+    }
 
-            helper(
-                parent_index,
-                &parent.entry.descriptors,
+    struct WalkState<'a> {
+        graph: &'a DependencyGraph,
+        parents: &'a [Vec<ParentRef>],
+        target_node_id: NodeId,
+        seen_chains: &'a mut HashSet<(NodeId, Vec<NodeId>)>,
+        chains: &'a mut Vec<DependencyChain>,
+    }
+
+    fn walk(
+        current_node_id: NodeId,
+        current_chain: &mut Vec<ChainLink>,
+        visited: &mut HashSet<NodeId>,
+        state: &mut WalkState<'_>,
+    ) {
+        let parent_refs = &state.parents[current_node_id];
+        if parent_refs.is_empty() {
+            emit_chain(
+                state.target_node_id,
+                state.graph,
                 current_chain,
-                chains,
+                Vec::new(),
+                state.seen_chains,
+                state.chains,
             );
+            return;
+        }
+
+        let mut reached_root = false;
+        for parent in parent_refs {
+            if visited.contains(&parent.node_id) {
+                let locator = &state.graph.nodes[parent.node_id].locator;
+                emit_chain(
+                    state.target_node_id,
+                    state.graph,
+                    current_chain,
+                    vec![format!("Dependency cycle detected at {}", locator)],
+                    state.seen_chains,
+                    state.chains,
+                );
+                continue;
+            }
+
+            reached_root = true;
+            let parent_node = &state.graph.nodes[parent.node_id];
+            current_chain.push(ChainLink {
+                node_id: parent.node_id,
+                name: parent_node.name.clone(),
+                version: parent_node.version.clone(),
+                locator: parent_node.locator.clone(),
+                requested_as: parent.requested_as.clone(),
+                dependency_kind: parent.dependency_kind,
+            });
+            visited.insert(parent.node_id);
+            walk(parent.node_id, current_chain, visited, state);
+            visited.remove(&parent.node_id);
             current_chain.pop();
+        }
+
+        if !reached_root && state.chains.is_empty() {
+            emit_chain(
+                state.target_node_id,
+                state.graph,
+                current_chain,
+                Vec::new(),
+                state.seen_chains,
+                state.chains,
+            );
         }
     }
 
-    let mut chains = Vec::new();
-    let mut current_chain = Vec::new();
-    let target_entry = entries
-        .iter()
-        .find(|e| e.name == package_name && e.version == package_version);
-    let target_descriptors = match target_entry {
-        Some(entry) => &entry.descriptors,
-        None => return chains,
-    };
-    let parent_index = build_parent_index(entries);
+    let mut parents = vec![Vec::<ParentRef>::new(); graph.nodes.len()];
+    let mut seen_parent_edges = HashSet::new();
+    for (parent_node_id, node) in graph.nodes.iter().enumerate() {
+        for edge in &node.dependencies {
+            if edge.target >= graph.nodes.len() {
+                continue;
+            }
+            let key = (
+                edge.target,
+                parent_node_id,
+                edge.requested_as.clone(),
+                edge.kind,
+            );
+            if seen_parent_edges.insert(key) {
+                parents[edge.target].push(ParentRef {
+                    node_id: parent_node_id,
+                    requested_as: edge.requested_as.clone(),
+                    dependency_kind: edge.kind,
+                });
+            }
+        }
+    }
 
-    helper(
-        &parent_index,
-        target_descriptors,
-        &mut current_chain,
-        &mut chains,
-    );
+    let target_node_ids = graph
+        .nodes
+        .iter()
+        .enumerate()
+        .filter_map(|(node_id, node)| {
+            (node.name == package_name && node.version == package_version).then_some(node_id)
+        })
+        .collect::<Vec<_>>();
+
+    let mut chains = Vec::new();
+    let mut seen_chains = HashSet::new();
+    for target_node_id in target_node_ids {
+        let mut visited = HashSet::from([target_node_id]);
+        let mut current_chain = Vec::new();
+        let mut state = WalkState {
+            graph,
+            parents: &parents,
+            target_node_id,
+            seen_chains: &mut seen_chains,
+            chains: &mut chains,
+        };
+        walk(target_node_id, &mut current_chain, &mut visited, &mut state);
+    }
 
     chains
 }

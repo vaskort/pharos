@@ -1,65 +1,135 @@
-use crate::search::ChainLink;
-use reqwest::blocking::get;
+use crate::search::DependencyChain;
+use reqwest::blocking::Client;
+use reqwest::header::{ACCEPT, HeaderMap, HeaderValue};
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
+use std::time::Duration;
 
-/// A cache that maps package names to their registry data,
-/// so we don't make duplicate HTTP requests for the same package.
-pub type RegistryCache = HashMap<String, RegistryResponse>;
+const MAX_REGISTRY_WORKERS: usize = 8;
 
-/// The response from the npm registry for a given package.
-/// Contains a map of all published versions and their metadata.
-#[derive(Deserialize, Debug)]
+#[derive(Clone, Debug)]
+enum RegistryLookup {
+    Success(RegistryResponse),
+    Failure(String),
+}
+
+#[derive(Default, Debug)]
+pub struct RegistryCache {
+    entries: HashMap<String, RegistryLookup>,
+}
+
+impl RegistryCache {
+    pub fn get(&self, package: &str) -> Option<&RegistryResponse> {
+        match self.entries.get(package) {
+            Some(RegistryLookup::Success(response)) => Some(response),
+            Some(RegistryLookup::Failure(_)) | None => None,
+        }
+    }
+
+    pub fn error(&self, package: &str) -> Option<&str> {
+        match self.entries.get(package) {
+            Some(RegistryLookup::Failure(error)) => Some(error),
+            Some(RegistryLookup::Success(_)) | None => None,
+        }
+    }
+
+    pub fn insert(&mut self, package: String, response: RegistryResponse) {
+        self.entries
+            .insert(package, RegistryLookup::Success(response));
+    }
+
+    fn insert_error(&mut self, package: String, error: String) {
+        self.entries.insert(package, RegistryLookup::Failure(error));
+    }
+
+    pub fn contains_key(&self, package: &str) -> bool {
+        self.entries.contains_key(package)
+    }
+
+    #[cfg(test)]
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    #[cfg(test)]
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+}
+
+impl<const N: usize> From<[(String, RegistryResponse); N]> for RegistryCache {
+    fn from(entries: [(String, RegistryResponse); N]) -> Self {
+        let mut cache = Self::default();
+        for (package, response) in entries {
+            cache.insert(package, response);
+        }
+        cache
+    }
+}
+
+#[derive(Clone, Deserialize, Debug)]
 pub struct RegistryResponse {
     pub versions: HashMap<String, VersionInfo>,
 }
 
-/// Metadata for a single published version of a package.
-///
-/// For example, version `4.17.21` of `lodash` might have:
-/// - `dependencies`: `{"some-lib": "^2.0.0", "other-lib": "~1.5.0"}`
-///
-/// `dependencies` is `None` when the version has no dependencies.
-#[derive(Deserialize, Debug)]
+#[derive(Clone, Default, Deserialize, Debug)]
 pub struct VersionInfo {
     pub dependencies: Option<HashMap<String, String>>,
+    #[serde(default, rename = "optionalDependencies")]
+    pub optional_dependencies: Option<HashMap<String, String>>,
 }
 
-/// Fetches package metadata from the npm registry.
-///
-/// Makes a GET request to `https://registry.npmjs.org/{package}`
-/// and parses the JSON response into a `RegistryResponse`.
-///
-/// # Arguments
-/// * `package` - The npm package name (e.g. "lodash", "react")
-pub fn get_package_data(package: &str) -> Result<RegistryResponse, reqwest::Error> {
-    let registry_url: String = format!("https://registry.npmjs.org/{}", package);
-    let result = get(registry_url);
+pub trait RegistryFetcher: Sync {
+    fn fetch(&self, package: &str) -> Result<RegistryResponse, String>;
+}
 
-    match result {
-        Ok(value) => value.json::<RegistryResponse>(),
-        Err(err) => Err(err),
+struct NpmRegistryClient {
+    client: Client,
+    base_url: String,
+}
+
+impl NpmRegistryClient {
+    fn new() -> Result<Self, String> {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            ACCEPT,
+            HeaderValue::from_static("application/vnd.npm.install-v1+json"),
+        );
+        let client = Client::builder()
+            .user_agent(format!("pharos-cli/{}", env!("CARGO_PKG_VERSION")))
+            .connect_timeout(Duration::from_secs(3))
+            .timeout(Duration::from_secs(10))
+            .default_headers(headers)
+            .build()
+            .map_err(|err| format!("failed to create npm registry client: {}", err))?;
+        let base_url = std::env::var("PHAROS_REGISTRY_URL")
+            .unwrap_or_else(|_| "https://registry.npmjs.org".to_string())
+            .trim_end_matches('/')
+            .to_string();
+        Ok(Self { client, base_url })
     }
 }
 
-/// Collects all unique package names from a list of dependency chains.
-///
-/// A package may appear in multiple chains (e.g. `lodash` could be a dependency
-/// of both `react` and `express`), but we only need its name once when looking
-/// up registry data.
-///
-/// # Arguments
-/// * `chains` - A list of dependency chains, where each chain is a `Vec<ChainLink>`
-///   representing the path from a direct dependency down to the vulnerable package.
-///
-/// # Returns
-/// A deduplicated list of package names, in the order they were first encountered.
-pub fn find_unique_parents(chains: &[Vec<ChainLink>]) -> Vec<&str> {
+impl RegistryFetcher for NpmRegistryClient {
+    fn fetch(&self, package: &str) -> Result<RegistryResponse, String> {
+        let registry_url = format!("{}/{}", self.base_url, package);
+        self.client
+            .get(registry_url)
+            .send()
+            .map_err(|err| format!("request failed: {}", err))?
+            .error_for_status()
+            .map_err(|err| format!("registry returned an error: {}", err))?
+            .json::<RegistryResponse>()
+            .map_err(|err| format!("invalid registry response: {}", err))
+    }
+}
+
+pub fn find_unique_parents(chains: &[DependencyChain]) -> Vec<&str> {
     let mut unique_parents = Vec::new();
     let mut seen = HashSet::new();
 
     for chain in chains {
-        for chain_link in chain {
+        for chain_link in &chain.links {
             if seen.insert(chain_link.name.as_str()) {
                 unique_parents.push(chain_link.name.as_str());
             }
@@ -69,33 +139,76 @@ pub fn find_unique_parents(chains: &[Vec<ChainLink>]) -> Vec<&str> {
     unique_parents
 }
 
-/// Fetches registry data for all unique parent packages in the dependency chains.
-///
-/// Uses `find_unique_parents` to determine which packages need data,
-/// then fetches from the npm registry for any package not already in the cache.
-/// Results are stored in `registry_cache` to avoid duplicate requests.
-///
-/// # Arguments
-/// * `chains` - The dependency chains to extract parent package names from.
-/// * `registry_cache` - A mutable cache that stores previously fetched registry data.
-pub fn find_parent_versions(chains: &[Vec<ChainLink>], registry_cache: &mut RegistryCache) {
-    let unique_parents_to_get_data_for = find_unique_parents(chains);
-
-    for parent in unique_parents_to_get_data_for {
-        if registry_cache.contains_key(parent) {
-            continue;
+pub fn find_parent_versions(
+    chains: &[DependencyChain],
+    additional_packages: &[&str],
+    registry_cache: &mut RegistryCache,
+) {
+    let mut packages = find_unique_parents(chains);
+    for package in additional_packages {
+        if !packages.contains(package) {
+            packages.push(package);
         }
+    }
 
-        match get_package_data(parent) {
-            Ok(data) => {
-                registry_cache.insert(parent.to_string(), data);
+    let fetcher = match NpmRegistryClient::new() {
+        Ok(fetcher) => fetcher,
+        Err(error) => {
+            for package in packages {
+                if !registry_cache.contains_key(package) {
+                    registry_cache.insert_error(package.to_string(), error.clone());
+                }
             }
-            Err(e) => {
-                eprintln!(
-                    "Something went wrong fetching data for {} with message {}",
-                    parent, e
-                )
-            }
+            return;
+        }
+    };
+    fetch_registry_versions_with(&fetcher, &packages, registry_cache, MAX_REGISTRY_WORKERS);
+}
+
+pub fn fetch_registry_versions_with<F: RegistryFetcher>(
+    fetcher: &F,
+    packages: &[&str],
+    registry_cache: &mut RegistryCache,
+    max_workers: usize,
+) {
+    let mut seen = HashSet::new();
+    let missing = packages
+        .iter()
+        .filter_map(|package| {
+            let package = *package;
+            (seen.insert(package) && !registry_cache.contains_key(package))
+                .then(|| package.to_string())
+        })
+        .collect::<Vec<_>>();
+    if missing.is_empty() {
+        return;
+    }
+
+    let worker_count = max_workers.max(1).min(missing.len());
+    let chunk_size = missing.len().div_ceil(worker_count);
+    let results = std::thread::scope(|scope| {
+        let handles = missing
+            .chunks(chunk_size)
+            .map(|chunk| {
+                scope.spawn(move || {
+                    chunk
+                        .iter()
+                        .map(|package| (package.clone(), fetcher.fetch(package)))
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect::<Vec<_>>();
+
+        handles
+            .into_iter()
+            .flat_map(|handle| handle.join().expect("registry worker panicked"))
+            .collect::<Vec<_>>()
+    });
+
+    for (package, result) in results {
+        match result {
+            Ok(response) => registry_cache.insert(package, response),
+            Err(error) => registry_cache.insert_error(package, error),
         }
     }
 }

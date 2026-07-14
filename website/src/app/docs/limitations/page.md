@@ -11,6 +11,7 @@ Current limitations:
 - Package ownership is inferred only from the sibling `package.json`.
 - Fix suggestions rely on public npm registry metadata.
 - Private packages in a chain may not have upgrade recommendations.
-- Candidate upgrades should be reviewed and tested in the target project.
+- Semver verification proves range containment, not application compatibility or installation success.
+- Override and resolution fallbacks can expose incompatibilities and must be tested.
 
-Planned improvements include npm v1 lockfile support and remediation output that can propose new requested ranges when recommending parent upgrades.
+Planned improvements include workspace ownership, pnpm and npm v1 lockfiles, and audit-report ingestion.

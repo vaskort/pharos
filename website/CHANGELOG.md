@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-07-14 — Pharos 0.6.0
+
+- Add safe-range-aware remediation with `--fixed`.
+- Add identity-preserving dependency graphs and duplicate-chain removal.
+- Add bounded parallel npm registry requests with structured failures.
+- Add exact manifest, override, and resolution instructions.
+- Add additive JSON schema version 1 and `--no-registry`.
+
 ## 2025-07-29
 
 - Update to React 19 and Next.js 15.4

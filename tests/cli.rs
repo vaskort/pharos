@@ -1,5 +1,7 @@
 use serde_json::json;
 use std::fs;
+use std::io::{Read, Write};
+use std::net::TcpListener;
 use std::path::Path;
 use std::process::{Command, Output};
 use tempfile::tempdir;
@@ -7,6 +9,29 @@ use tempfile::tempdir;
 fn run_pharos(args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_pharos"))
         .args(args)
+        .output()
+        .expect("failed to run pharos binary")
+}
+
+fn run_pharos_with_registry(args: &[&str], response_body: &'static str) -> Output {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    std::thread::spawn(move || {
+        if let Ok((mut stream, _)) = listener.accept() {
+            let mut request = [0; 4096];
+            let _ = stream.read(&mut request);
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                response_body.len(),
+                response_body
+            );
+            let _ = stream.write_all(response.as_bytes());
+        }
+    });
+
+    Command::new(env!("CARGO_BIN_EXE_pharos"))
+        .args(args)
+        .env("PHAROS_REGISTRY_URL", format!("http://{}", address))
         .output()
         .expect("failed to run pharos binary")
 }
@@ -147,30 +172,13 @@ fn reports_direct_dependency_as_json() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let report: serde_json::Value = serde_json::from_str(&stdout).unwrap();
 
+    assert_eq!(report["schema_version"], json!(1));
+    assert_eq!(report["package"]["name"], json!("pkg-a"));
+    assert_eq!(report["lockfiles"][0]["status"], json!("found"));
+    assert_eq!(report["lockfiles"][0]["chains"][0]["links"], json!([]));
     assert_eq!(
-        report,
-        json!({
-            "package": {
-                "name": "pkg-a",
-                "version": "1.0.0"
-            },
-            "lockfiles": [
-                {
-                    "path": dir.path().join("yarn.lock").display().to_string(),
-                    "lockfile_type": "yarn",
-                    "status": "found",
-                    "chains": [
-                        {
-                            "links": [],
-                            "owner": null,
-                            "fix_path": [],
-                            "recommended": null,
-                            "warnings": []
-                        }
-                    ]
-                }
-            ]
-        })
+        report["lockfiles"][0]["chains"][0]["remediation"]["status"],
+        json!("unavailable")
     );
 }
 
@@ -224,13 +232,12 @@ fn reports_invalid_package_json_warning_as_json() {
         .unwrap();
 
     assert_eq!(report["lockfiles"][0]["chains"][0]["owner"], json!(null));
-    assert_eq!(warnings.len(), 1);
-    assert!(
-        warnings[0]
+    assert!(warnings.iter().any(|warning| {
+        warning
             .as_str()
             .unwrap()
             .contains("Failed to parse package.json")
-    );
+    }));
 }
 
 #[test]
@@ -247,23 +254,103 @@ fn reports_missing_package_as_json() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let report: serde_json::Value = serde_json::from_str(&stdout).unwrap();
 
-    assert_eq!(
-        report,
-        json!({
-            "package": {
-                "name": "pkg-z",
-                "version": "1.0.0"
-            },
-            "lockfiles": [
-                {
-                    "path": dir.path().join("yarn.lock").display().to_string(),
-                    "lockfile_type": "yarn",
-                    "status": "not_found",
-                    "chains": []
-                }
-            ]
-        })
+    assert_eq!(report["schema_version"], json!(1));
+    assert_eq!(report["package"]["name"], json!("pkg-z"));
+    assert_eq!(report["lockfiles"][0]["status"], json!("not_found"));
+    assert_eq!(report["lockfiles"][0]["chains"], json!([]));
+}
+
+#[test]
+fn rejects_invalid_or_contradictory_fixed_ranges() {
+    let dir = tempdir().unwrap();
+    copy_fixture_as_yarn_lock(dir.path(), "single_package.lock");
+    let path = dir.path().to_str().unwrap();
+
+    let invalid = run_pharos(&["pkg-a@1.0.0", "--path", path, "--fixed", "not-semver"]);
+    assert_eq!(invalid.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&invalid.stderr).contains("Invalid --fixed value"));
+
+    let contradictory = run_pharos(&["pkg-a@1.0.0", "--path", path, "--fixed", ">=1"]);
+    assert_eq!(contradictory.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&contradictory.stderr).contains("contains vulnerable version"));
+}
+
+#[test]
+fn reports_verified_direct_remediation_as_additive_json() {
+    let dir = tempdir().unwrap();
+    copy_fixture_as_yarn_lock(dir.path(), "single_package.lock");
+    write_package_json(dir.path(), r#"{"dependencies":{"pkg-a":"^1.0.0"}}"#);
+    let path = dir.path().to_str().unwrap();
+
+    let output = run_pharos_with_registry(
+        &["pkg-a@1.0.0", "--path", path, "--fixed", "2.0.0", "--json"],
+        r#"{"versions":{"2.0.0":{}}}"#,
     );
+
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let chain = &report["lockfiles"][0]["chains"][0];
+    assert_eq!(report["schema_version"], json!(1));
+    assert_eq!(report["package"]["fixed_range"], json!(">=2.0.0"));
+    assert_eq!(chain["remediation"]["status"], json!("semver_verified"));
+    assert_eq!(
+        chain["remediation"]["primary_action"]["kind"],
+        json!("direct_update")
+    );
+    assert_eq!(
+        chain["remediation"]["primary_action"]["requested_as"],
+        json!("^2.0.0")
+    );
+}
+
+#[test]
+fn no_registry_returns_chains_without_network_diagnostics() {
+    let dir = tempdir().unwrap();
+    copy_fixture_as_yarn_lock(dir.path(), "single_package.lock");
+    let path = dir.path().to_str().unwrap();
+
+    let output = run_pharos(&[
+        "pkg-a@1.0.0",
+        "--path",
+        path,
+        "--fixed",
+        "2.0.0",
+        "--no-registry",
+        "--json",
+    ]);
+
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        report["lockfiles"][0]["chains"][0]["remediation"]["status"],
+        json!("unavailable")
+    );
+    assert!(
+        report["lockfiles"][0]["chains"][0]["warnings"][0]
+            .as_str()
+            .unwrap()
+            .contains("--no-registry")
+    );
+}
+
+#[test]
+fn text_labels_unfixed_registry_advice_as_a_candidate() {
+    let dir = tempdir().unwrap();
+    copy_fixture_as_yarn_lock(dir.path(), "simple_chain.lock");
+    write_package_json(dir.path(), r#"{"dependencies":{"pkg-a":"^1.0.0"}}"#);
+    let path = dir.path().to_str().unwrap();
+
+    let output = run_pharos_with_registry(
+        &["pkg-b@2.0.0", "--path", path],
+        r#"{"versions":{"1.0.0":{"dependencies":{"pkg-b":"^2.0.0"}},"2.0.0":{"dependencies":{"pkg-b":"^3.0.0"}}}}"#,
+    );
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Candidate path (not verified; pass --fixed to verify)"));
+    assert!(!stdout.contains("Verified remediation"));
 }
 
 #[test]
