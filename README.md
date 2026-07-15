@@ -1,5 +1,7 @@
 # Pharos 🏛️
 
+**Deterministic dependency remediation for developers and AI coding agents.**
+
 [![CI](https://github.com/vaskort/pharos/actions/workflows/ci.yml/badge.svg)](https://github.com/vaskort/pharos/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/pharos-cli.svg)](https://www.npmjs.com/package/pharos-cli)
 [![Docs](https://img.shields.io/badge/docs-pharos-00846a.svg)](https://pharos-cli.io/)
